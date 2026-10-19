@@ -4,6 +4,9 @@
 use std::time::Duration;
 
 pub mod binance_rest;
+pub mod clob_info;
+pub mod gamma;
+pub mod ntp;
 
 /// The HTTP client of the cold runtime: rustls on ring, a 10-s timeout per request.
 pub fn http_client() -> reqwest::Client {
