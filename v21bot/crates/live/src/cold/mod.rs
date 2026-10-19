@@ -5,6 +5,7 @@ use std::time::Duration;
 
 pub mod binance_rest;
 pub mod clob_info;
+pub mod exact;
 pub mod gamma;
 pub mod ntp;
 

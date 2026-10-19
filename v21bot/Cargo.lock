@@ -2306,6 +2306,7 @@ dependencies = [
  "tokio-tungstenite",
  "toml",
  "v21-core",
+ "v21-replay",
  "xxhash-rust",
  "zeroize",
 ]

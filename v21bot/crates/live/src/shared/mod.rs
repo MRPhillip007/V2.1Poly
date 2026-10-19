@@ -2,5 +2,6 @@
 
 pub mod clock;
 pub mod config;
+pub mod msgs;
 pub mod secrets;
 pub mod tls;

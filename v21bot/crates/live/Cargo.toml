@@ -29,3 +29,4 @@ axum = "0.8"
 flate2 = "1"
 proptest = "1"
 tempfile = "3.27.0"
+v21-replay = { path = "../replay" }
