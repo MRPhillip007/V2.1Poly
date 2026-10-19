@@ -10,7 +10,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use rayon::prelude::*;
 use v21_core::closes::ArrayCloses;
 use v21_core::decision::{Decision, WindowEngine};
@@ -92,7 +92,11 @@ fn file_signals(path: &Path, windows: &[WindowMeta], by_token: &HashMap<[u8; 32]
 
 /// The signals of `windows` found in the book `files`, numbered and decided under v2 and v2.1; one
 /// row per signal, ordered by window and number. `closes` holds the 1-s closes of each coin.
+/// A coin of `windows` missing from `closes` is an error: its signals cannot get a z.
 pub fn replay_with(files: &[PathBuf], windows: &[WindowMeta], closes: &HashMap<Coin, ArrayCloses>, strategy: &Strategy) -> Result<Vec<SignalRow>> {
+    if let Some(w) = windows.iter().find(|w| !closes.contains_key(&w.coin)) {
+        bail!("no Binance closes for {}", w.coin.as_str());
+    }
     // the detector's parameters are the same in v2 and v2.1
     let p = &strategy.v2;
     let by_token: HashMap<[u8; 32], usize> = windows.iter().enumerate().map(|(i, w)| (w.up, i)).collect();
@@ -121,7 +125,7 @@ pub fn replay_with(files: &[PathBuf], windows: &[WindowMeta], closes: &HashMap<C
         let w = &windows[i];
         let check = found[&i];
         let s = w.s0_ms.div_euclid(1000);
-        let Some(cl) = closes.get(&w.coin) else { continue };
+        let cl = &closes[&w.coin];
         if !cl.covers(s - BEFORE_S, s + v21_core::window::WINDOW_S) {
             continue;
         }

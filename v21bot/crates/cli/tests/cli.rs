@@ -1,9 +1,24 @@
 //! The `v21` command as a user runs it: exit codes and messages for bad input.
 
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 fn v21(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_v21")).args(args).env_remove("V21_ROOT").output().unwrap()
+    Command::new(env!("CARGO_BIN_EXE_v21"))
+        .args(args)
+        .env_remove("V21_ROOT")
+        .env_remove("V21_DATA")
+        .output()
+        .unwrap()
+}
+
+/// A data folder with the frozen strategy files and nothing else.
+fn bare_root() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["strategy_v2.json", "strategy_v2_1.json"] {
+        let from = format!("{}/../core/tests/data/{name}", env!("CARGO_MANIFEST_DIR"));
+        std::fs::copy(from, dir.path().join(name)).unwrap();
+    }
+    dir
 }
 
 #[test]
@@ -20,6 +35,34 @@ fn no_root_at_all_exits_2_and_says_how_to_give_one() {
     assert_eq!(out.status.code(), Some(2));
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("--root") && err.contains("V21_ROOT"), "{err}");
+}
+
+#[test]
+fn a_valid_root_without_a_data_file_exits_2_and_names_it() {
+    let root = bare_root();
+    let out = v21(&["replay", "--root", root.path().to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2));
+    let err = String::from_utf8_lossy(&out.stderr);
+    // the backtest's table is read first, so a missing one stops the command before the long replay
+    assert!(err.contains("ruslan_rule_all_triggers.parquet"), "{err}");
+}
+
+#[test]
+fn data_and_v21_data_are_aliases() {
+    // spec §4.4 and §10 name them --data and V21_DATA
+    let out = v21(&["replay", "--data", "Z:/no/such/dir"]);
+    assert_eq!(out.status.code(), Some(2));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("strategy_v2.json"), "{err}");
+    let out = Command::new(env!("CARGO_BIN_EXE_v21"))
+        .arg("replay")
+        .env_remove("V21_ROOT")
+        .env("V21_DATA", "Z:/no/such/dir")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("strategy_v2.json"), "{err}");
 }
 
 #[test]
@@ -42,6 +85,30 @@ fn pre_replay_agrees_with_the_backtest_and_exits_0() {
         assert!(out_dir.join(table).exists(), "{table}");
     }
     let _ = std::fs::remove_dir_all(&out_dir);
+}
+
+#[test]
+fn a_closed_stdout_is_a_clean_exit() {
+    let Ok(root) = std::env::var("V21_ROOT") else {
+        println!("skipped: V21_ROOT is not set");
+        return;
+    };
+    let out_dir = tempfile::tempdir().unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_v21"))
+        .args(["replay", "--root", &root, "--period", "pre", "--out"])
+        .arg(out_dir.path())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    // the reader goes away before the first line, as `v21 replay | head -0` does
+    drop(child.stdout.take());
+    let out = child.wait_with_output().unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(matches!(out.status.code(), Some(0 | 1)), "{:?}: {err}", out.status);
+    assert!(!err.contains("panicked"), "{err}");
+    // the tables are still written
+    assert!(out_dir.path().join("signals.csv").exists());
 }
 
 #[test]

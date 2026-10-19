@@ -8,7 +8,7 @@ use anyhow::{anyhow, Result};
 use v21_core::params::Params;
 use v21_core::window::{Coin, Side};
 
-use crate::archive::{prices, read_columns, texts, ts_ms, Period};
+use crate::archive::{float_column, int_column, read_columns, texts, Period};
 use crate::run::{ReplayOutput, SignalRow};
 
 /// z, cushion, sigma and h must agree to this.
@@ -56,6 +56,23 @@ pub struct Comparison {
     pub verdict: String,
 }
 
+impl Comparison {
+    /// What the command prints: the verdict, then at most `shown` problem lines and at most `shown`
+    /// lines of newer signals, each list closed by a count of the lines left out.
+    pub fn lines(&self, shown: usize) -> Vec<String> {
+        let mut out = vec![self.verdict.clone()];
+        out.extend(self.problems.iter().take(shown).map(|p| format!("  {p}")));
+        if self.problems.len() > shown {
+            out.push(format!("  ... and {} more", self.problems.len() - shown));
+        }
+        out.extend(self.newer.iter().take(shown).map(|n| format!("  {n}")));
+        if self.newer.len() > shown {
+            out.push(format!("  ... and {} more newer than the reference", self.newer.len() - shown));
+        }
+        out
+    }
+}
+
 fn reference_paths(root: &Path, period: Period) -> (PathBuf, PathBuf) {
     match period {
         Period::Main => (root.join("data/ruslan_rule_all_triggers.parquet"), root.join("data/ruslan_v2_trades.parquet")),
@@ -83,13 +100,13 @@ pub fn load_reference(root: &Path, period: Period, v21: &Params) -> Result<Refer
         let p = &sig_path;
         let slug = texts(&cols[0], p, "slug")?;
         let coin = texts(&cols[1], p, "coin")?;
-        let s0 = ts_ms(&cols[2], p, "s0")?;
+        let s0 = int_column(&cols[2], p, "s0")?;
         let side = texts(&cols[4], p, "side")?;
-        let f = |k: usize| prices(&cols[k], p, names[k]);
+        let f = |k: usize| float_column(&cols[k], p, names[k]);
         let (t_trig, px, z, cushion, sigma, h) = (f(3)?, f(5)?, f(6)?, f(7)?, f(8)?, f(9)?);
-        let rank = ts_ms(&cols[10], p, "rank_in_window")?;
+        let rank = int_column(&cols[10], p, "rank_in_window")?;
         let (ret_top, ret) = (f(11)?, f(12)?);
-        let entry = ts_ms(&cols[13], p, "entry")?;
+        let entry = int_column(&cols[13], p, "entry")?;
         for i in 0..s0.len() {
             let slug = slug[i].clone().ok_or_else(|| anyhow!("{}: row {i}: no slug", p.display()))?;
             signals.push(RefSignal {
@@ -115,7 +132,7 @@ pub fn load_reference(root: &Path, period: Period, v21: &Params) -> Result<Refer
         let p = &trades_path;
         let slug = texts(&cols[0], p, "slug")?;
         let coin = texts(&cols[1], p, "coin")?;
-        let entry = ts_ms(&cols[2], p, "entry")?;
+        let entry = int_column(&cols[2], p, "entry")?;
         for i in 0..entry.len() {
             let slug = slug[i].clone().ok_or_else(|| anyhow!("{}: row {i}: no slug", p.display()))?;
             let hour = u32::try_from(entry[i].div_euclid(3_600_000).rem_euclid(24)).expect("an hour of the day");
@@ -180,18 +197,18 @@ pub fn compare(got: &ReplayOutput, r: &Reference) -> Comparison {
                 s.slug, s.t_trig, side_name(s.side), s.px, g.t_trig, side_name(g.side), g.px
             ));
         }
-        let dz = (g.z.z - s.z).abs();
-        z_max = if dz.is_nan() { f64::NAN } else { z_max.max(dz) };
-        let bad: Vec<&str> = [
+        let fields = [
             ("z", g.z.z, s.z),
             ("cushion_bp", g.z.cushion_bp, s.cushion_bp),
             ("sigma_bp", g.z.sigma_bp, s.sigma_bp),
             ("h", g.z.h, s.h),
-        ]
-        .iter()
-        .filter(|(_, a, b)| !close(*a, *b, Z_TOL))
-        .map(|(name, _, _)| *name)
-        .collect();
+        ];
+        for (_, a, b) in fields {
+            let d = (a - b).abs();
+            // a NaN stays: f64::max would drop it at the next number
+            z_max = if z_max.is_nan() || d.is_nan() { f64::NAN } else { z_max.max(d) };
+        }
+        let bad: Vec<&str> = fields.iter().filter(|(_, a, b)| !close(*a, *b, Z_TOL)).map(|(name, _, _)| *name).collect();
         if !bad.is_empty() {
             bad_z += 1;
             problems.push(format!("z differs: {}: {} (backtest z {:?}, replay z {:?})", s.slug, bad.join(", "), s.z, g.z.z));

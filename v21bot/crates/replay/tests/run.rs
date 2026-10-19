@@ -26,6 +26,7 @@ const V21: &str = include_str!("../../core/tests/data/strategy_v2_1.json");
 const S0: i64 = 1_790_910_900_000;
 const ETH_UP: [u8; 32] = [1; 32];
 const BTC_UP: [u8; 32] = [2; 32];
+const SOL_UP: [u8; 32] = [3; 32];
 
 fn strategy() -> Strategy {
     load_strategy(V2, V21).unwrap()
@@ -130,6 +131,32 @@ fn a_later_file_replaces_the_signal_but_keeps_the_first_position() {
     let got: Vec<(Coin, f64, u32)> = rows.iter().map(|r| (r.coin, r.px, r.rank)).collect();
     // BTC keeps the first place of the dictionary and takes file B's check
     assert_eq!(got, vec![(Coin::Btc, 0.80, 1), (Coin::Eth, 0.79, 2)]);
+}
+
+#[test]
+fn an_earlier_files_signal_survives_when_the_windows_own_hour_has_none() {
+    // `res[i] = ...` only overwrites: a later file without rows of the window leaves file A's signal alone
+    let dir = tempfile::tempdir().unwrap();
+    let a = dir.path().join("2026-10-02T02.parquet");
+    let b = dir.path().join("2026-10-02T03.parquet");
+    write_bbo(&a, &[(S0 + 839_000, BTC_UP, 0.10, 0.75)]);
+    write_bbo(&b, &[(S0 + 839_500, ETH_UP, 0.20, 0.79)]);
+    let windows = [window(Coin::Btc, BTC_UP), window(Coin::Eth, ETH_UP)];
+    let rows = replay_with(&[a, b], &windows, &covered(), &strategy()).unwrap();
+    let got: Vec<(Coin, f64, u32)> = rows.iter().map(|r| (r.coin, r.px, r.rank)).collect();
+    assert_eq!(got, vec![(Coin::Btc, 0.75, 1), (Coin::Eth, 0.79, 2)]);
+}
+
+#[test]
+fn a_coin_missing_from_closes_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let f = dir.path().join("2026-10-02T03.parquet");
+    write_bbo(&f, &[(S0 + 839_000, BTC_UP, 0.10, 0.75), (S0 + 839_500, SOL_UP, 0.20, 0.79)]);
+    let mut closes = covered();
+    closes.remove(&Coin::Sol);
+    let windows = [window(Coin::Btc, BTC_UP), window(Coin::Sol, SOL_UP)];
+    let err = replay_with(&[f], &windows, &closes, &strategy()).unwrap_err();
+    assert!(format!("{err:#}").contains("no Binance closes for sol"), "{err:#}");
 }
 
 #[test]

@@ -1028,6 +1028,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "tempfile",
  "v21-core",
  "v21-replay",
 ]

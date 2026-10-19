@@ -152,6 +152,37 @@ fn signals_after_the_reference_go_to_newer_not_to_problems() {
     assert!(cmp.verdict.starts_with("signals 1/1 equal"), "{}", cmp.verdict);
 }
 
+#[test]
+fn verdict_z_max_diff_counts_every_z_field_and_keeps_nan() {
+    // only sigma_bp differs: the verdict must not claim agreement, and its max is that difference
+    let refs = vec![reference_row("a", S0, 1)];
+    let mut rows = vec![replay_row(&refs[0], false, false)];
+    rows[0].z.sigma_bp += 1e-6;
+    let cmp = compare(&output(rows), &reference(refs, &[], &[]));
+    assert!(cmp.verdict.contains("z max diff 1.000e-6"), "{}", cmp.verdict);
+    // a NaN difference is not forgotten when a later signal differs by a number
+    let refs = vec![reference_row("a", S0, 1), reference_row("b", S0 + 900_000, 1)];
+    let mut rows: Vec<SignalRow> = refs.iter().map(|r| replay_row(r, false, false)).collect();
+    rows[0].z.z = f64::NAN;
+    rows[1].z.z += 1e-6;
+    let cmp = compare(&output(rows), &reference(refs, &[], &[]));
+    assert!(cmp.verdict.contains("z max diff NaN"), "{}", cmp.verdict);
+}
+
+#[test]
+fn newer_lines_are_capped_at_40_with_a_tail() {
+    let refs = vec![reference_row("a", S0, 1)];
+    let mut rows = vec![replay_row(&refs[0], false, false)];
+    for k in 1..=45 {
+        rows.push(replay_row(&reference_row(&format!("n{k}"), S0 + k * 900_000, 1), false, false));
+    }
+    let cmp = compare(&output(rows), &reference(refs, &[], &[]));
+    assert_eq!(cmp.newer.len(), 45);
+    let lines = cmp.lines(40);
+    assert_eq!(lines.iter().filter(|l| l.contains("newer than the reference: ")).count(), 40);
+    assert_eq!(lines.last().map(String::as_str), Some("  ... and 5 more newer than the reference"));
+}
+
 fn root() -> Option<PathBuf> {
     match std::env::var("V21_ROOT") {
         Ok(r) => Some(PathBuf::from(r)),

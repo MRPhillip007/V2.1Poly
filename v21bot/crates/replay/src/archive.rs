@@ -126,8 +126,9 @@ fn bad_type(path: &Path, name: &str, t: &DataType) -> anyhow::Error {
     anyhow!("{}: column {name} has an unexpected type {t}", path.display())
 }
 
-/// A timestamp column in unix ms, rounded down; a null is an error.
-pub(crate) fn ts_ms(a: &ArrayRef, path: &Path, name: &str) -> Result<Vec<i64>> {
+/// An integer column: a timestamp in unix ms (rounded down) or a plain Int64 (a window start, a
+/// number in the window); a null is an error.
+pub(crate) fn int_column(a: &ArrayRef, path: &Path, name: &str) -> Result<Vec<i64>> {
     let (div, mul) = match a.data_type() {
         DataType::Timestamp(TimeUnit::Second, _) => (1, 1000),
         DataType::Timestamp(TimeUnit::Millisecond, _) => (1, 1),
@@ -155,11 +156,12 @@ const NEG_POW10: [f64; 19] = [
     1e-18,
 ];
 
-/// A price column as doubles, Float64 as is and Decimal(p, s) as pyarrow's cast to float64 makes it:
+/// A float column (a price, a time in the window, z) as doubles, Float64 as is and Decimal(p, s) as
+/// pyarrow's cast to float64 makes it:
 /// `value * 1e-s`, a product with the double `1e-s`, not a division by `10^s` — the two differ in the
 /// last bit for about a third of the 4-decimal prices, and at a 4th-decimal tie (0.8805) that bit
 /// decides the backtest's `np.round(x, 3)`. A null is NaN.
-pub(crate) fn prices(a: &ArrayRef, path: &Path, name: &str) -> Result<Vec<f64>> {
+pub(crate) fn float_column(a: &ArrayRef, path: &Path, name: &str) -> Result<Vec<f64>> {
     let out: Vec<f64> = match a.data_type() {
         DataType::Decimal128(_, scale) => {
             let d = a.as_primitive::<Decimal128Type>();
@@ -234,9 +236,9 @@ pub fn load_windows(root: &Path, period: Period, coins: &[Coin], incidents: Opti
     for cols in read_columns(&path, &["slug", "coin", "start", "up", "p_up_final"])? {
         let slugs = texts(&cols[0], &path, "slug")?;
         let coin_names = texts(&cols[1], &path, "coin")?;
-        let starts = ts_ms(&cols[2], &path, "start")?;
+        let starts = int_column(&cols[2], &path, "start")?;
         let ups = texts(&cols[3], &path, "up")?;
-        let finals = prices(&cols[4], &path, "p_up_final")?;
+        let finals = float_column(&cols[4], &path, "p_up_final")?;
         for i in 0..starts.len() {
             let Some(coin) = coin_names[i].as_deref().and_then(Coin::parse).filter(|c| coins.contains(c)) else {
                 continue;
@@ -295,9 +297,9 @@ pub fn read_bbo_file(path: &Path, tokens: &HashSet<[u8; 32]>) -> Result<Vec<BboR
         if keep.is_empty() {
             continue;
         }
-        let ts = ts_ms(&cols[0], path, "timestamp")?;
-        let bid = prices(&cols[2], path, "best_bid")?;
-        let ask = prices(&cols[3], path, "best_ask")?;
+        let ts = int_column(&cols[0], path, "timestamp")?;
+        let bid = float_column(&cols[2], path, "best_bid")?;
+        let ask = float_column(&cols[3], path, "best_ask")?;
         out.extend(keep.into_iter().map(|(i, token)| BboRow { ts_ms: ts[i], token, bid: bid[i], ask: ask[i] }));
     }
     Ok(out)
@@ -312,8 +314,8 @@ pub fn load_closes(root: &Path, period: Period, coin: Coin) -> Result<ArrayClose
         if cols[1].null_count() > 0 {
             bail!("{}: a second without a close", path.display());
         }
-        t.extend(ts_ms(&cols[0], &path, "t")?);
-        c.extend(prices(&cols[1], &path, "c")?);
+        t.extend(int_column(&cols[0], &path, "t")?);
+        c.extend(float_column(&cols[1], &path, "c")?);
     }
     if t.is_empty() {
         bail!("{}: no seconds", path.display());
