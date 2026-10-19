@@ -14,4 +14,5 @@ v21-core = { path = "../core" }
 zeroize = "~1.8"
 
 [dev-dependencies]
+proptest = "1"
 tempfile = "3.27.0"
