@@ -4,6 +4,8 @@
 //! of `paper/book.py`: a size is the new total of its level (0 removes it), and `trim` drops the
 //! levels that the server's best prices show a trade has taken.
 
+use std::cmp::Ordering;
+
 /// The top tick: prices are `0..=1` in steps of 0.001.
 pub const MAX_TICK: u16 = 1000;
 
@@ -109,14 +111,14 @@ impl Book {
     /// `best_bid`, asks below `best_ask` (an empty side comes as bid 0.0 / ask 1.0). A NaN drops the
     /// whole side, as in `paper`.
     pub fn trim(&mut self, best_bid: f64, best_ask: f64) {
+        // a level stays if it is at or behind the server's price; a NaN compares with nothing
         let floor = best_ask - 1e-9;
-        // written as "keeps", which is false for a NaN floor
-        while self.best_ask != NONE && !(tick_price(self.best_ask) >= floor) {
+        while self.best_ask != NONE && !tick_price(self.best_ask).partial_cmp(&floor).is_some_and(Ordering::is_ge) {
             self.asks[self.best_ask] = 0.0;
             self.best_ask = self.ask_from(self.best_ask + 1);
         }
         let ceiling = best_bid + 1e-9;
-        while self.best_bid != NONE && !(tick_price(self.best_bid) <= ceiling) {
+        while self.best_bid != NONE && !tick_price(self.best_bid).partial_cmp(&ceiling).is_some_and(Ordering::is_le) {
             self.bids[self.best_bid] = 0.0;
             self.best_bid = self.bid_below(self.best_bid);
         }
