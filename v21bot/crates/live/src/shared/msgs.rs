@@ -1,6 +1,8 @@
 //! What both engines are armed with, and what the hot thread and the cold runtime say to each other.
 
+use v21_core::decision::Reason;
 use v21_core::fill::FeeSchedule;
+use v21_core::params::Params;
 use v21_core::window::{Coin, Side};
 use v21_core::zscore::ZInfo;
 
@@ -52,6 +54,59 @@ pub struct ShotRecord {
     pub z: Option<ZInfo>,
     /// From the frame's arrival to the decision, ns (the hot loop fills it in).
     pub frame_to_decision_ns: u64,
+}
+
+/// Why the fast engine did not shoot.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FastReason {
+    /// The rule of the strategy (milestone 1's reasons).
+    Rule(Reason),
+    /// A feed is silent, the clock is not measured or is off, too little money, the demo account stopped.
+    Paused(&'static str),
+    /// The market's rules are not those the strategy was tested on.
+    RulesChanged,
+    /// After a drop of the feed, the bought token has no fresh snapshot.
+    StaleBook,
+    /// The coin's number was still open when its check closed (a check of another coin, or a coin of
+    /// the window without a market).
+    RankUnknown,
+    /// The coin is bought or waits for the answer to its shot, or the window has its two shots.
+    ShotLimit,
+}
+
+impl FastReason {
+    /// The reason as the journal and the tables write it.
+    pub fn label(&self, p: &Params) -> String {
+        match self {
+            FastReason::Rule(r) => r.label(p),
+            FastReason::Paused(why) => (*why).to_string(),
+            FastReason::RulesChanged => "правила рынка изменились".to_string(),
+            FastReason::StaleBook => "после обрыва ленты нет свежего снимка".to_string(),
+            FastReason::RankUnknown => "номер монеты неизвестен".to_string(),
+            FastReason::ShotLimit => "монета уже в сделке или 2 выстрела в окне".to_string(),
+        }
+    }
+}
+
+/// A check the fast engine did not shoot on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FastSkip {
+    pub s: i64,
+    pub coin: Coin,
+    pub side: Side,
+    pub t_trig: f64,
+    pub rank: Option<u32>,
+    pub z: Option<ZInfo>,
+    pub reason: FastReason,
+}
+
+/// What the fast engine decided at the start of a check.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FastOut {
+    Shot(ShotRecord),
+    Skip(FastSkip),
+    /// The decision waits: for the number of the coin, or for the answer to the coin's last shot.
+    Wait { s: i64, coin: Coin, t_trig: f64 },
 }
 
 /// The 32-byte big-endian form of a decimal token id (a uint256), as the archive stores the ids; `None`
