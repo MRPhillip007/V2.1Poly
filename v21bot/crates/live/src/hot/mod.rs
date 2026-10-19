@@ -3,3 +3,4 @@
 pub mod copies;
 pub mod items;
 pub mod wire;
+pub mod ws;

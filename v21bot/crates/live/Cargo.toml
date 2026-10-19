@@ -8,10 +8,16 @@ description = "The live bot of strategy v2.1: feeds, the fast and exact decision
 
 [dependencies]
 anyhow = "1"
+bytes = "1"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 serde = { version = "1", features = ["derive"] }
 # float_roundtrip: a number the websocket writes as a JSON number is read correctly rounded, as
 # Python's float() reads it (pmbot).
 serde_json = { version = "1", features = ["float_roundtrip"] }
+# rustls on ring only: aws-lc (rustls' default) needs CMake and NASM to build on Windows
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "net", "sync"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 toml = "0.8"
 v21-core = { path = "../core" }
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
