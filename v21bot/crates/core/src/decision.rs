@@ -64,41 +64,29 @@ pub struct Decision {
 }
 
 /// The cross-coin rules of one window. Checks must come in the order of their numbers — the
-/// backtest numbers the signals by time — since the rank is the order of the calls.
-pub struct WindowEngine<'p> {
-    p: &'p Params,
+/// backtest numbers the signals by time — since the rank is the order of the calls. The parameters
+/// come with each call, so a live engine keeps its own and runs one of these per window.
+pub struct WindowEngine {
     /// The window start, unix seconds.
     s: i64,
     /// Successful checks so far.
     counted: u32,
 }
 
-impl<'p> WindowEngine<'p> {
-    pub fn new(p: &'p Params, s: i64) -> Self {
-        WindowEngine { p, s, counted: 0 }
+impl WindowEngine {
+    pub fn new(s: i64) -> Self {
+        WindowEngine { s, counted: 0 }
     }
 
-    /// Whether to trade on a check, `z` being its distance filter.
-    pub fn decide(&mut self, chk: &Check, z: Option<&ZInfo>) -> Decision {
-        let p = self.p;
-        let hour = utc_hour(self.s, chk.t_trig);
-        let hour_ok = p.hours.iter().any(|&(a, b)| a <= hour && hour < b);
-        let mut rank = None;
-        let reason = if !chk.ok {
-            Reason::FailedCheck
-        } else {
+    /// Whether to trade on a check under the parameters `p`, `z` being its distance filter.
+    pub fn decide(&mut self, p: &Params, chk: &Check, z: Option<&ZInfo>) -> Decision {
+        let rank = if chk.ok {
             self.counted += 1;
-            rank = Some(self.counted);
-            match z {
-                _ if self.counted > p.max_coins => Reason::ThirdCoin,
-                _ if !hour_ok => Reason::OutOfHours,
-                _ if !p.trade_coins.contains(&chk.coin) => Reason::CoinNotTraded,
-                None => Reason::NoBinance,
-                Some(zi) if zi.z.is_nan() => Reason::NoBinance,
-                Some(zi) if zi.z < p.z_min => Reason::ZBelow,
-                Some(_) => Reason::Enter,
-            }
+            Some(self.counted)
+        } else {
+            None
         };
+        let (reason, hour_ok) = reason_for(p, self.s, chk, rank, z);
         Decision {
             check: *chk,
             counted: chk.ok,
@@ -109,4 +97,24 @@ impl<'p> WindowEngine<'p> {
             reason,
         }
     }
+}
+
+/// The reason and `hour_ok` of a check whose number in window `s` is known: the order of
+/// `WindowEngine::decide` without its count, for a decision taken before every earlier check has
+/// settled. `rank` is the number of a successful check; a failed one has none and is always
+/// `FailedCheck`.
+pub fn reason_for(p: &Params, s: i64, chk: &Check, rank: Option<u32>, z: Option<&ZInfo>) -> (Reason, bool) {
+    let hour = utc_hour(s, chk.t_trig);
+    let hour_ok = p.hours.iter().any(|&(a, b)| a <= hour && hour < b);
+    let reason = match z {
+        _ if !chk.ok => Reason::FailedCheck,
+        _ if rank.is_some_and(|r| r > p.max_coins) => Reason::ThirdCoin,
+        _ if !hour_ok => Reason::OutOfHours,
+        _ if !p.trade_coins.contains(&chk.coin) => Reason::CoinNotTraded,
+        None => Reason::NoBinance,
+        Some(zi) if zi.z.is_nan() => Reason::NoBinance,
+        Some(zi) if zi.z < p.z_min => Reason::ZBelow,
+        Some(_) => Reason::Enter,
+    };
+    (reason, hour_ok)
 }

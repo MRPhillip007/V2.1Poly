@@ -139,7 +139,7 @@ pub fn replay_with(files: &[PathBuf], windows: &[WindowMeta], closes: &HashMap<C
     for (s0_ms, mut kept) in by_window {
         kept.sort_by(|a, b| a.check.t_trig.total_cmp(&b.check.t_trig).then(a.pos.cmp(&b.pos)));
         let s = s0_ms.div_euclid(1000);
-        let (mut e2, mut e21) = (WindowEngine::new(&strategy.v2, s), WindowEngine::new(&strategy.v21, s));
+        let (mut e2, mut e21) = (WindowEngine::new(s), WindowEngine::new(s));
         for (k, kept) in kept.into_iter().enumerate() {
             let w = &windows[kept.i];
             let c = kept.check;
@@ -158,8 +158,8 @@ pub fn replay_with(files: &[PathBuf], windows: &[WindowMeta], closes: &HashMap<C
                 ret_top: trade_return(c.px, win, 0.0, p.fee),
                 ret: trade_return(c.px, win, p.slip, p.fee),
                 entry_ms: entry_ms(s0_ms, c.t_trig),
-                v2: e2.decide(&c, Some(&kept.z)),
-                v21: e21.decide(&c, Some(&kept.z)),
+                v2: e2.decide(&strategy.v2, &c, Some(&kept.z)),
+                v21: e21.decide(&strategy.v21, &c, Some(&kept.z)),
             });
         }
     }

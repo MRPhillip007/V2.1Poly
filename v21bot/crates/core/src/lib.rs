@@ -10,6 +10,7 @@ pub mod detector;
 pub mod numpy;
 pub mod params;
 pub mod pyjson;
+pub mod ranks;
 pub mod returns;
 pub mod stats;
 pub mod window;

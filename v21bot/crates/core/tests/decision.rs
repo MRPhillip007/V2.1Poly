@@ -4,7 +4,7 @@
 mod common;
 
 use common::{strategy, S};
-use v21_core::decision::{Decision, Reason, WindowEngine, ENTER, SKIP};
+use v21_core::decision::{reason_for, Decision, Reason, WindowEngine, ENTER, SKIP};
 use v21_core::detector::Check;
 use v21_core::params::Params;
 use v21_core::window::{Coin, Side};
@@ -41,7 +41,7 @@ fn reason(d: &Decision, p: &Params) -> String {
 #[test]
 fn engine_third_counts_rejected() {
     let p = v2();
-    let mut eng = WindowEngine::new(&p, S); // the window of 03:15 UTC
+    let mut eng = Eng::new(&p, S); // the window of 03:15 UTC
     let got: Vec<Decision> = [(Coin::Btc, 0.5), (Coin::Eth, 2.0), (Coin::Sol, 2.0)]
         .iter()
         .enumerate()
@@ -56,7 +56,7 @@ fn engine_third_counts_rejected() {
 #[test]
 fn engine_decision_carries_the_check_and_the_z() {
     let p = v2();
-    let mut eng = WindowEngine::new(&p, S);
+    let mut eng = Eng::new(&p, S);
     let chk = Check { coin: Coin::Eth, t_trig: 851.2, side: Side::Down, ask_at_trig: 0.81, px: 0.82, ok: true };
     let z = zi(2.0);
     let got = eng.decide(&chk, Some(&z));
@@ -80,7 +80,7 @@ fn engine_hours() {
         ((12, 45), false),
         ((13, 0), true),
     ] {
-        let got = WindowEngine::new(&p, window_start(hour, minute)).decide(&up_check(845.0, Coin::Btc), Some(&zi(2.0)));
+        let got = Eng::new(&p, window_start(hour, minute)).decide(&up_check(845.0, Coin::Btc), Some(&zi(2.0)));
         assert_eq!(got.hour_ok, allowed, "{hour:02}:{minute:02}");
         assert_eq!(reason(&got, &p), if allowed { "вход" } else { "вне часов" });
         assert_eq!(got.trade, allowed);
@@ -93,16 +93,16 @@ fn engine_hours() {
 fn engine_hour_is_the_hour_of_the_entry_moment() {
     // the window of 06:45 is in the hours 00-07, but an entry 15 minutes into it is already 07:00
     let p = v2();
-    let mut eng = WindowEngine::new(&p, window_start(6, 45));
+    let mut eng = Eng::new(&p, window_start(6, 45));
     assert_eq!(eng.decide(&up_check(899.0, Coin::Btc), Some(&zi(2.0))).reason, Reason::Enter);
     assert_eq!(eng.decide(&up_check(900.0, Coin::Btc), Some(&zi(2.0))).reason, Reason::OutOfHours);
-    assert!(WindowEngine::new(&p, window_start(12, 45)).decide(&up_check(900.0, Coin::Btc), Some(&zi(2.0))).hour_ok);
+    assert!(Eng::new(&p, window_start(12, 45)).decide(&up_check(900.0, Coin::Btc), Some(&zi(2.0))).hour_ok);
 }
 
 #[test]
 fn engine_failed_check_not_counted() {
     let p = v2();
-    let mut eng = WindowEngine::new(&p, S);
+    let mut eng = Eng::new(&p, S);
     let bad = eng.decide(&failed_check(), Some(&zi(2.0)));
     assert!(!bad.counted);
     assert_eq!(bad.rank, None);
@@ -116,7 +116,7 @@ fn engine_failed_check_not_counted() {
 #[test]
 fn engine_no_binance() {
     let p = v2();
-    let got = WindowEngine::new(&p, S).decide(&up_check(845.0, Coin::Btc), None);
+    let got = Eng::new(&p, S).decide(&up_check(845.0, Coin::Btc), None);
     assert_eq!((reason(&got, &p).as_str(), got.rank, got.trade, got.counted), ("нет данных Binance", Some(1), false, true));
     assert_eq!(got.z, None);
 }
@@ -126,7 +126,7 @@ fn engine_nan_z_is_no_binance_data() {
     // sigma 0 gives z = nan, which compares false with everything: it must not slip through as a good z
     let p = v2();
     let z = ZInfo { z: f64::NAN, p0: 100.0, ef: 100.0, sigma_bp: 0.0, h: 20.0, cushion_bp: 0.0 };
-    let got = WindowEngine::new(&p, S).decide(&up_check(845.0, Coin::Btc), Some(&z));
+    let got = Eng::new(&p, S).decide(&up_check(845.0, Coin::Btc), Some(&z));
     assert_eq!((reason(&got, &p).as_str(), got.trade, got.rank), ("нет данных Binance", false, Some(1)));
     assert!(got.z.unwrap().z.is_nan());
 }
@@ -134,9 +134,9 @@ fn engine_nan_z_is_no_binance_data() {
 #[test]
 fn engine_z_threshold_is_inclusive() {
     let p = v2();
-    assert_eq!(WindowEngine::new(&p, S).decide(&up_check(845.0, Coin::Btc), Some(&zi(1.25))).reason, Reason::Enter);
-    assert_eq!(WindowEngine::new(&p, S).decide(&up_check(845.0, Coin::Btc), Some(&zi(1.2499999))).reason, Reason::ZBelow);
-    assert_eq!(WindowEngine::new(&p, S).decide(&up_check(845.0, Coin::Btc), Some(&zi(-3.0))).reason, Reason::ZBelow);
+    assert_eq!(Eng::new(&p, S).decide(&up_check(845.0, Coin::Btc), Some(&zi(1.25))).reason, Reason::Enter);
+    assert_eq!(Eng::new(&p, S).decide(&up_check(845.0, Coin::Btc), Some(&zi(1.2499999))).reason, Reason::ZBelow);
+    assert_eq!(Eng::new(&p, S).decide(&up_check(845.0, Coin::Btc), Some(&zi(-3.0))).reason, Reason::ZBelow);
 }
 
 #[test]
@@ -144,12 +144,12 @@ fn engine_reasons_come_in_the_stated_order() {
     // failed check beats everything; then third coin, hours, Binance data, z
     let p = v2();
     let up = up_check(845.0, Coin::Btc);
-    let mut eng = WindowEngine::new(&p, window_start(23, 45)); // out of hours
+    let mut eng = Eng::new(&p, window_start(23, 45)); // out of hours
     assert_eq!(eng.decide(&failed_check(), None).reason, Reason::FailedCheck);
     assert_eq!(eng.decide(&up, None).reason, Reason::OutOfHours);
     assert_eq!(eng.decide(&up, Some(&zi(0.1))).reason, Reason::OutOfHours);
     assert_eq!(eng.decide(&up, None).reason, Reason::ThirdCoin);
-    let mut eng = WindowEngine::new(&p, S);
+    let mut eng = Eng::new(&p, S);
     assert_eq!(eng.decide(&up, None).reason, Reason::NoBinance);
     assert_eq!(eng.decide(&up, Some(&zi(0.1))).reason, Reason::ZBelow);
     assert_eq!(eng.decide(&up, Some(&zi(0.1))).reason, Reason::ThirdCoin);
@@ -159,7 +159,7 @@ fn engine_reasons_come_in_the_stated_order() {
 fn engines_of_two_windows_count_apart() {
     let p = v2();
     let up = up_check(845.0, Coin::Btc);
-    let (mut a, mut b) = (WindowEngine::new(&p, S), WindowEngine::new(&p, S + 900));
+    let (mut a, mut b) = (Eng::new(&p, S), Eng::new(&p, S + 900));
     assert_eq!(a.decide(&up, Some(&zi(2.0))).rank, Some(1));
     assert_eq!(b.decide(&up, Some(&zi(2.0))).rank, Some(1));
     assert_eq!(a.decide(&up, Some(&zi(2.0))).rank, Some(2));
@@ -170,7 +170,7 @@ fn engines_of_two_windows_count_apart() {
 #[test]
 fn v21_sol_is_counted_but_not_traded() {
     let s = strategy();
-    let mut eng = WindowEngine::new(&s.v21, S);
+    let mut eng = Eng::new(&s.v21, S);
     let d = [
         eng.decide(&up_check(845.0, Coin::Sol), Some(&zi(2.0))),
         eng.decide(&up_check(846.0, Coin::Btc), Some(&zi(2.0))),
@@ -187,9 +187,9 @@ fn v21_hours_are_00_07_only() {
     let w = window_start(13, 0);
     assert_eq!(w, 1_790_946_000);
     let btc = up_check(845.0, Coin::Btc);
-    assert_eq!(WindowEngine::new(&s.v2, w).decide(&btc, Some(&zi(2.0))).reason, Reason::Enter);
-    assert_eq!(WindowEngine::new(&s.v21, w).decide(&btc, Some(&zi(2.0))).reason, Reason::OutOfHours);
-    assert_eq!(WindowEngine::new(&s.v21, window_start(6, 45)).decide(&btc, Some(&zi(2.0))).reason, Reason::Enter);
+    assert_eq!(Eng::new(&s.v2, w).decide(&btc, Some(&zi(2.0))).reason, Reason::Enter);
+    assert_eq!(Eng::new(&s.v21, w).decide(&btc, Some(&zi(2.0))).reason, Reason::OutOfHours);
+    assert_eq!(Eng::new(&s.v21, window_start(6, 45)).decide(&btc, Some(&zi(2.0))).reason, Reason::Enter);
 }
 
 #[test]
@@ -197,11 +197,11 @@ fn v21_reason_order_puts_the_coin_after_the_hours() {
     let s = strategy();
     let sol = up_check(845.0, Coin::Sol);
     // SOL out of hours: the hours speak first
-    assert_eq!(WindowEngine::new(&s.v21, window_start(13, 0)).decide(&sol, None).reason, Reason::OutOfHours);
+    assert_eq!(Eng::new(&s.v21, window_start(13, 0)).decide(&sol, None).reason, Reason::OutOfHours);
     // SOL in the hours, without z: the coin speaks before the missing Binance data
-    assert_eq!(WindowEngine::new(&s.v21, S).decide(&sol, None).reason, Reason::CoinNotTraded);
+    assert_eq!(Eng::new(&s.v21, S).decide(&sol, None).reason, Reason::CoinNotTraded);
     // and v2 trades SOL, so there the missing data is the reason
-    assert_eq!(WindowEngine::new(&s.v2, S).decide(&sol, None).reason, Reason::NoBinance);
+    assert_eq!(Eng::new(&s.v2, S).decide(&sol, None).reason, Reason::NoBinance);
 }
 
 #[test]
@@ -220,4 +220,80 @@ fn labels_are_the_exact_strings() {
         assert_eq!(r.label(p), want);
     }
     assert_eq!((ENTER, SKIP), ("вход", "пропуск"));
+}
+
+/// The engine with its parameters, as the tests ported from `paper` drive it.
+struct Eng<'p> {
+    p: &'p Params,
+    e: WindowEngine,
+}
+
+impl<'p> Eng<'p> {
+    fn new(p: &'p Params, s: i64) -> Self {
+        Eng { p, e: WindowEngine::new(s) }
+    }
+
+    fn decide(&mut self, chk: &Check, z: Option<&ZInfo>) -> Decision {
+        self.e.decide(self.p, chk, z)
+    }
+}
+
+/// The order of spec §5.1, written out here apart from the engine: failed check, third coin, hours,
+/// coin, no Binance data, z.
+fn expected_reason(p: &Params, s: i64, chk: &Check, rank: Option<u32>, z: Option<&ZInfo>) -> (Reason, bool) {
+    let hour = ((s as f64 + chk.t_trig) / 3600.0).floor() as i64 % 24;
+    let hour_ok = p.hours.iter().any(|&(a, b)| i64::from(a) <= hour && hour < i64::from(b));
+    let reason = if !chk.ok {
+        Reason::FailedCheck
+    } else if rank.is_some_and(|r| r > p.max_coins) {
+        Reason::ThirdCoin
+    } else if !hour_ok {
+        Reason::OutOfHours
+    } else if !p.trade_coins.contains(&chk.coin) {
+        Reason::CoinNotTraded
+    } else {
+        match z {
+            Some(zi) if !zi.z.is_nan() && zi.z >= p.z_min => Reason::Enter,
+            Some(zi) if !zi.z.is_nan() => Reason::ZBelow,
+            _ => Reason::NoBinance,
+        }
+    };
+    (reason, hour_ok)
+}
+
+#[test]
+fn reason_for_matches_window_engine_on_every_combination() {
+    let s = strategy();
+    let mut seen: Vec<Reason> = vec![];
+    for p in [&s.v2, &s.v21] {
+        for w in [S, window_start(13, 0)] {
+            for coin in [Coin::Btc, Coin::Sol] {
+                for z in [None, Some(zi(f64::NAN)), Some(zi(0.5)), Some(zi(2.0))] {
+                    for ok in [true, false] {
+                        for rank in 1..=3u32 {
+                            let px = if ok { 0.80 } else { 0.90 };
+                            let chk = Check { coin, t_trig: 845.0, side: Side::Up, ask_at_trig: 0.80, px, ok };
+                            // the engine reaches the number through earlier successful checks
+                            let mut eng = WindowEngine::new(w);
+                            for _ in 1..rank {
+                                eng.decide(p, &up_check(841.0, Coin::Eth), Some(&zi(2.0)));
+                            }
+                            let d = eng.decide(p, &chk, z.as_ref());
+                            let number = ok.then_some(rank);
+                            let want = expected_reason(p, w, &chk, number, z.as_ref());
+                            let at = format!("hours {:?}, window {w}, {coin:?}, z {z:?}, ok {ok}, rank {rank}", p.hours);
+                            assert_eq!((d.reason, d.hour_ok), want, "engine: {at}");
+                            assert_eq!(d.rank, number, "engine: {at}");
+                            assert_eq!(reason_for(p, w, &chk, number, z.as_ref()), want, "reason_for: {at}");
+                            if !seen.contains(&want.0) {
+                                seen.push(want.0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // every reason came up at least once
+    assert_eq!(seen.len(), 7, "{seen:?}");
 }

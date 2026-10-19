@@ -11,3 +11,9 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
+
+# Tests run in debug builds and read the parquet archive: the dependencies (arrow, parquet, serde_json)
+# are built optimised there too. The workspace's own crates stay at opt-level 0, so coverage and
+# debugging are unchanged; release builds are not affected.
+[profile.dev.package."*"]
+opt-level = 3
