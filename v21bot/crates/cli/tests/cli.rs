@@ -112,6 +112,18 @@ fn a_closed_stdout_is_a_clean_exit() {
 }
 
 #[test]
+fn live_mode_is_refused_in_milestone_2() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = dir.path().join("v21bot.toml");
+    std::fs::write(&config, "mode = \"live\"\n").unwrap();
+    let secrets = dir.path().join("secrets.toml");
+    let out = v21(&["run", "--config", config.to_str().unwrap(), "--secrets", secrets.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("вехе 3"), "{err}");
+}
+
+#[test]
 fn a_bad_period_is_refused() {
     let out = v21(&["replay", "--root", ".", "--period", "july"]);
     assert_eq!(out.status.code(), Some(2));

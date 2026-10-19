@@ -1,0 +1,52 @@
+# Конфиг v21bot: спецификация §12 и ключи вехи 2. Все ключи необязательны: пропущенный берёт значение,
+# записанное здесь. Неизвестный ключ — ошибка с его именем.
+
+mode = "demo"                        # demo | live (live — с вехи 3)
+stake_usd = 20.0                     # доллары до комиссии на ордер; предел в коде: 20.0
+demo_bank_usd = 100.0                # стартовый баланс демо-счёта
+strategy_dir = "/root/15mbacktest"   # папка с strategy_v2.json и strategy_v2_1.json
+
+[feeds]
+polymarket_copies = 2                # копий ленты Polymarket
+polymarket_open_s = 600              # подключение к рынкам окна с этой секунды
+polymarket_close_s = 880             # и отключение
+reorder_hold_ms = 500                # буфер точного движка: события встают по времени биржи
+binance_ws = "wss://stream.binance.com:9443/stream"
+binance_ws_fallback = "wss://data-stream.binance.vision/stream"
+binance_rest = "https://api.binance.com"
+binance_rest_fallback = "https://data-api.binance.vision"
+binance_warmup_s = 1000              # секунд свечей при старте
+
+[exec]
+warm_interval_s = 5                  # замер пути до биржи
+response_timeout_ms = 2000           # веха 3
+balance_poll_s = 30                  # веха 3
+taker_delay_ms = 250                 # задержка тейкера в демо, пока нет живых ордеров
+
+[risk]
+feed_silent_ms = 2000                # лента молчит дольше в 835–870 с — пауза
+clock_max_offset_ms = 50             # поправка часов больше — пауза (на домашнем ПК ставь 5000)
+ntp_server = "time.google.com:123"   # "" — поправка только по Binance
+ledger_tolerance_usd = 1.0           # веха 3
+max_restarts_10min = 3               # веха 3
+redeem_alarm_min = 60                # веха 3
+
+[cores]
+hot = 1                              # ядро горячего потока
+cold = 0                             # ядро неспешного рантайма
+pin = true                           # закреплять потоки за ядрами
+
+[telegram]
+summary_utc = "07:30"                # сводка дня
+
+[paths]
+journal = "/var/lib/v21bot/journal.jsonl"   # CSV-таблицы пишутся в ту же папку
+state = "/var/lib/v21bot/state.json"
+stop_flag = "/var/lib/v21bot/STOP"          # веха 3
+
+[urls]
+gamma = "https://gamma-api.polymarket.com"
+clob = "https://clob.polymarket.com"
+polymarket_ws = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
+geoblock = "https://polymarket.com/api/geoblock"
+telegram_api = "https://api.telegram.org"

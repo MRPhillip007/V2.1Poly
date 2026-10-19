@@ -1,20 +1,25 @@
-//! `v21` — the command of the strategy v2.1 bot. Milestone 1: `v21 replay`, the archive through the
-//! core, compared with the Python backtest.
+//! `v21` — the command of the strategy v2.1 bot: `v21 replay`, the archive through the core compared
+//! with the Python backtest; `v21 run`, the live bot (milestone 2: the demo mode).
 //!
-//! Exit codes: 0 — the replay agrees with the backtest; 1 — it does not; 2 — bad input (no data
-//! folder, a missing or unreadable file, strategy files that are not the frozen ones).
+//! Exit codes: 0 — done, the replay agrees with the backtest; 1 — the replay does not agree; 2 — bad
+//! input (no data folder, a missing or unreadable file, strategy files that are not the frozen ones,
+//! a config the bot refuses).
 
 use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use v21_core::params::load_strategy;
 use v21_replay::archive::Period;
 use v21_replay::compare::{compare, load_reference};
 use v21_replay::report::{period_table, write_csv};
+use v21_live::shared::config::{Config, Mode};
+use v21_live::shared::secrets::Secrets;
 use v21_replay::run::replay;
 
 /// Problem lines (and lines of newer signals) printed at most; the rest are counted.
@@ -41,6 +46,15 @@ enum Cmd {
         /// Where the CSV tables go.
         #[arg(long, default_value = "replay_out")]
         out: PathBuf,
+    },
+    /// Run the live bot in the mode its config says (milestone 2: the demo mode only).
+    Run {
+        /// The config file.
+        #[arg(long, default_value = "/etc/v21bot/v21bot.toml")]
+        config: PathBuf,
+        /// The secrets file: the Telegram token and chat.
+        #[arg(long, default_value = "/etc/v21bot/secrets.toml")]
+        secrets: PathBuf,
     },
 }
 
@@ -98,6 +112,16 @@ fn run_replay(root: Option<PathBuf>, period: PeriodArg, out: PathBuf) -> Result<
     Ok(cmp.problems.is_empty())
 }
 
+/// `v21 run`: the bot in the mode of its config. Milestone 2 runs the demo mode only.
+fn run_bot(config: PathBuf, secrets: PathBuf) -> Result<()> {
+    let cfg = Config::load(&config)?;
+    if cfg.mode == Mode::Live {
+        bail!("mode = \"live\" в {}: боевой режим будет в вехе 3, сейчас — только mode = \"demo\"", config.display());
+    }
+    let secrets = Secrets::load(&secrets)?;
+    v21_live::run::run(cfg, secrets, Arc::new(AtomicBool::new(false)))
+}
+
 fn main() -> ExitCode {
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
@@ -106,14 +130,15 @@ fn main() -> ExitCode {
             return ExitCode::from(if e.use_stderr() { 2 } else { 0 });
         }
     };
-    match cli.cmd {
-        Cmd::Replay { root, period, out } => match run_replay(root, period, out) {
-            Ok(true) => ExitCode::SUCCESS,
-            Ok(false) => ExitCode::from(1),
-            Err(e) => {
-                let _ = writeln!(std::io::stderr(), "error: {e:#}");
-                ExitCode::from(2)
-            }
-        },
+    let result = match cli.cmd {
+        Cmd::Replay { root, period, out } => run_replay(root, period, out).map(|agrees| if agrees { 0 } else { 1 }),
+        Cmd::Run { config, secrets } => run_bot(config, secrets).map(|()| 0),
+    };
+    match result {
+        Ok(code) => ExitCode::from(code),
+        Err(e) => {
+            let _ = writeln!(std::io::stderr(), "error: {e:#}");
+            ExitCode::from(2)
+        }
     }
 }
