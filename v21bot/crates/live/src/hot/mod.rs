@@ -1,5 +1,6 @@
 //! The hot thread: the feeds and the fast decisions.
 
+pub mod binance;
 pub mod copies;
 pub mod items;
 pub mod wire;

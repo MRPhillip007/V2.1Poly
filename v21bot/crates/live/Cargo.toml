@@ -14,6 +14,7 @@ serde = { version = "1", features = ["derive"] }
 # float_roundtrip: a number the websocket writes as a JSON number is read correctly rounded, as
 # Python's float() reads it (pmbot).
 serde_json = { version = "1", features = ["float_roundtrip"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "query", "http2"] }
 # rustls on ring only: aws-lc (rustls' default) needs CMake and NASM to build on Windows
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "net", "sync"] }
@@ -24,6 +25,7 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 zeroize = "~1.8"
 
 [dev-dependencies]
+axum = "0.8"
 flate2 = "1"
 proptest = "1"
 tempfile = "3.27.0"

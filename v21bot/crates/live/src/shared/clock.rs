@@ -6,9 +6,14 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// This machine's clock, unix microseconds.
-fn local_us() -> i64 {
+pub fn local_us() -> i64 {
     let since = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
     i64::try_from(since.as_micros()).unwrap_or(i64::MAX)
+}
+
+/// This machine's clock, unix ms.
+pub fn local_ms() -> i64 {
+    local_us().div_euclid(1000)
 }
 
 pub struct ExchangeClock {
