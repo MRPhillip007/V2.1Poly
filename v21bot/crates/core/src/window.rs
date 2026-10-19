@@ -1,19 +1,22 @@
 //! The geometry of a market window, the coins and sides, and the time helpers the backtest uses.
 
+use serde::{Deserialize, Serialize};
+
 /// A market window lasts 15 minutes.
 pub const WINDOW_S: i64 = 900;
 /// The price to beat and the final price are 60-second averages (the venue's TWAP rule).
 pub const TWAP_S: i64 = 60;
 
 /// The outcome a bet is on: the Up token, or the Down token (whose ask is 1 − the Up bid).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Side {
     Up,
     Down,
 }
 
 /// A coin whose markets the strategy watches.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Coin {
     Btc,
     Eth,

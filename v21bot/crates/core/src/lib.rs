@@ -7,7 +7,9 @@
 pub mod closes;
 pub mod decision;
 pub mod detector;
+pub mod fill;
 pub mod live_closes;
+pub mod money;
 pub mod numpy;
 pub mod params;
 pub mod pyjson;
