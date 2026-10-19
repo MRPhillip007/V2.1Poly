@@ -2,5 +2,6 @@
 //! journal and the messages (milestone 2). The orders come in milestone 3.
 
 pub mod book;
+pub mod hot;
 pub mod run;
 pub mod shared;

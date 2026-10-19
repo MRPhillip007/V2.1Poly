@@ -9,10 +9,14 @@ description = "The live bot of strategy v2.1: feeds, the fast and exact decision
 [dependencies]
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
+# float_roundtrip: a number the websocket writes as a JSON number is read correctly rounded, as
+# Python's float() reads it (pmbot).
+serde_json = { version = "1", features = ["float_roundtrip"] }
 toml = "0.8"
 v21-core = { path = "../core" }
 zeroize = "~1.8"
 
 [dev-dependencies]
+flate2 = "1"
 proptest = "1"
 tempfile = "3.27.0"
