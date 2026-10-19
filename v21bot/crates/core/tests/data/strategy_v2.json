@@ -1,0 +1,84 @@
+{
+  "name": "ruslan_v2",
+  "description": "Buy the Polymarket 15m Up/Down favourite in the last minute (Ruslan's trigger) with distance, coin-count and session filters",
+  "status": "frozen - do not change parameters, otherwise the forward test is no longer a forward test",
+  "frozen_utc": "2026-10-02T00:29:54Z",
+  "data_used_until_utc": "2026-10-01T18:59:59Z",
+  "forward_start_utc": "2026-10-01T19:00:00Z",
+  "research_split_utc": "2026-09-07T00:00:00Z",
+  "rule_selected_utc": "2026-10-01T10:00:00Z",
+
+  "markets": {
+    "venue": "Polymarket (CLOB)",
+    "type": "Crypto Up or Down, 15 minutes",
+    "slug_pattern": "{coin}-updown-15m-{window_start_unix}",
+    "coins": ["btc", "eth", "sol"],
+    "window_s": 900,
+    "resolution": "Up if Chainlink TWAP-60s at window end (finalPrice) >= Chainlink TWAP-60s at window start (priceToBeat), else Down"
+  },
+
+  "entry": {
+    "monitor_from_s": 840,
+    "monitor_to_s": 870,
+    "price_band": [0.70, 0.88],
+    "side": "the side (Up or Down) whose best ask is inside the price band - automatically the favourite",
+    "order": "market buy, fill-and-kill, limit price = max_fill_price",
+    "max_fill_price": 0.88,
+    "fill_latency_s": 0.3,
+    "if_price_above_limit": "no fill, keep monitoring until monitor_to_s",
+    "entries_per_window_per_coin": 1
+  },
+
+  "filters": {
+    "distance_min_sigma": 1.25,
+    "distance_definition": "z = side * ln(expected final 60-s average / price to beat) / (sigma * sqrt(h))",
+    "sigma_lookback_s": 300,
+    "sigma_definition": "sqrt(mean of squared 1-s log returns of the underlying over the last sigma_lookback_s seconds)",
+    "h_definition": "effective seconds left for the TWAP rule: h = V / 3600, V = nf^2 * a + (nf - 1) * nf * (2 * nf - 1) / 6, nf = not-yet-known seconds of the final minute, a = seconds until the first of them (about 20 s at 60 s before close)",
+    "max_coins_per_window": 2,
+    "coin_rule": "the third coin to trigger in the same window is skipped (causal)",
+    "coin_rule_detail": "triggers = base entry-rule signals (ask in the band and ask <= max_fill_price after fill_latency_s) of all coins in the window, ordered by time and counted BEFORE the distance and hour filters; the coin whose trigger is 3rd does not trade",
+    "utc_hours": [[0, 7], [13, 16]],
+    "utc_hours_detail": "hour of the entry moment; = windows closing 00:15-07:00 and 13:15-16:00 UTC (40 of 96 windows a day per coin)",
+    "skip_incident_windows_buffer_min": 30,
+    "incident_note": "backtest data hygiene (data/INCIDENTS.json); live: pause when Polymarket reports an incident or the book / Binance stream is stale"
+  },
+
+  "exit": "none - hold to resolution, winning shares redeem at $1",
+
+  "costs": {
+    "taker_fee_rate": 0.07,
+    "taker_fee_formula": "shares * taker_fee_rate * price * (1 - price)",
+    "slippage_per_share": 0.014,
+    "min_market_order_usd": 1
+  },
+
+  "price_feed": {
+    "underlying": "Binance spot 1-s closes BTCUSDT / ETHUSDT / SOLUSDT (proxy of the Chainlink price; change error ~0.3 bp median)",
+    "price_to_beat_proxy": "mean of Binance 1-s closes of bars opened in [start-61 s, start-2 s]; live: may use the official priceToBeat with the Binance-Chainlink basis",
+    "book": "Polymarket best bid/ask of the Up token; Down ask = 1 - Up bid"
+  },
+
+  "sizing_recommendation": {
+    "fraction_of_deposit": 0.02,
+    "note": "not part of the backtested signal; backtest max drawdown 19% at 2%, 41% at 5% of the current balance"
+  },
+
+  "backtest_snapshot": {
+    "period": "2026-08-18 06:00 - 2026-10-01 18:59 UTC",
+    "trades": 229,
+    "trades_per_day": 5.2,
+    "win_rate": 0.873,
+    "avg_entry_price": 0.81,
+    "breakeven_win_rate_with_fee_and_slippage": 0.835,
+    "roi_per_trade_top_of_book": 0.060,
+    "roi_per_trade_with_slippage": 0.043,
+    "t_stat_top_of_book": 2.2,
+    "t_stat_with_slippage": 1.6,
+    "roi_first_half": 0.021,
+    "roi_second_half": 0.052,
+    "roi_by_coin": {"btc": 0.070, "eth": -0.005, "sol": 0.039},
+    "pnl_at_100_usd_per_trade": 979,
+    "deposit_1000_at_2pct": {"final": 1207, "max_drawdown": 0.19}
+  }
+}

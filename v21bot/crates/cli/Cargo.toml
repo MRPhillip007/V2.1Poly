@@ -1,0 +1,17 @@
+[package]
+name = "v21-cli"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "The v21 command: the archive replay of strategy v2.1 (the live bot comes in the next milestones)"
+
+[[bin]]
+name = "v21"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+v21-core = { path = "../core" }
+v21-replay = { path = "../replay" }

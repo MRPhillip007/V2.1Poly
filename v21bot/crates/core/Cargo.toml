@@ -1,0 +1,13 @@
+[package]
+name = "v21-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Strategy v2.1 without network, clock or files: shared by the archive replay and the live bot"
+
+[dependencies]
+# float_roundtrip: a decimal in a JSON file is read correctly rounded, as Python's float() reads it.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "0.10"
+thiserror = "2"

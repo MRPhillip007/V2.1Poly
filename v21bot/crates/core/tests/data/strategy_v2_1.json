@@ -1,0 +1,39 @@
+{
+  "name": "ruslan_v2_1",
+  "description": "Candidate: ruslan_v2 without SOL trades and without the 13-16 UTC session - BTC / ETH, entries 00:00-07:00 UTC",
+  "status": "candidate, frozen - do not change parameters, otherwise the forward test is no longer a forward test; v2 (strategy_v2.json) keeps running unchanged next to it, both are computed from the same data",
+  "chosen_utc": "2026-10-14",
+  "frozen_utc": "2026-10-15T00:58:00Z",
+  "data_used_until_utc": "2026-10-14T19:59:59Z",
+  "forward_start_utc": "2026-10-15T00:00:00Z",
+  "forward_note": "written down at frozen_utc, a few minutes after the forward start, but nothing after data_used_until_utc had been downloaded; v2.1 has no entries at 20:00-24:00 UTC, so no window falls between the data used and the forward",
+
+  "base": {
+    "config": "strategy_v2.json",
+    "sha256_canonical": "0e4ee96e6e2e4e6ec678e587a5fe57a78ff1393abd679f8dfd7972ead843e135",
+    "sha256_canonical_definition": "sha256 of json.dumps(json.load(file), sort_keys=True); ruslan_v2_1.py stops if strategy_v2.json no longer matches",
+    "rule": "every parameter of v2 applies unless changed below, so the v2.1 trades are exactly the v2 trades on the coins and entry hours below"
+  },
+
+  "changes": {
+    "trade_coins": ["btc", "eth"],
+    "trade_coins_detail": "SOL is not traded. Its signals still count in max_coins_per_window (the coin_rule of v2 is unchanged): when SOL is one of the first two coins to trigger in a window, the third coin is still skipped",
+    "utc_hours": [[0, 7]],
+    "utc_hours_detail": "hour of the entry moment; = windows closing 00:15-07:00 UTC (28 of 96 windows a day per coin); the 13:00-16:00 session of v2 is dropped"
+  },
+
+  "selection": {
+    "trigger": "the v2 forward 01.10 19:00 - 14.10 20:00 UTC: 72 trades, win 83.3% at a breakeven of 82.1%, +1.2% per trade; SOL 8 trades -37.8%, 13-16 UTC 20 trades -10.7%",
+    "before_the_v2_forward": "in the v2 backtest 18.08-01.10 SOL alone (39 trades, +3.9%) and 13-16 UTC alone (61 trades, +3.9%) were not weak; weak were SOL at 00-07 UTC (24 trades, -6.0%) and BTC/ETH at 13-16 UTC (46 trades, -1.2%); all trades v2.1 drops: 85 trades +1.1% against +6.1% for the 144 it keeps",
+    "pre_07_18_08": "not used to choose v2 (separate archive, see ruslan_v2_pre.py), but seen when choosing v2.1: v2.1 55 trades +3.8%, the 14 dropped -7.0%",
+    "in_sample": "every trade before forward_start_utc, including the v2 forward and 07-18.08"
+  },
+
+  "forward_rules": {
+    "stop_after_trades": 100,
+    "stop_if_win_below": 0.80,
+    "stop_detail": "on the first 100 v2.1 forward trades: win rate below 80% -> stop, there is no edge (at a true 88% this happens in 0.7% of cases, at 86% in 3.6%)",
+    "compare_with_v2": "the v2 trades that v2.1 drops are reported on the same forward period: v2.1 is better than v2 only if they lose money there",
+    "timing": "about 3.4 trades a day: 100 trades in about a month (mid-November 2026)"
+  }
+}
