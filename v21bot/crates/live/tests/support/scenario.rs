@@ -183,6 +183,22 @@ impl Stand {
 "));
     }
 
+    /// Waits until the table `name` holds what `ok` asks of its (header, rows): the bot rebuilds a
+    /// table after the records that change it, so a table read when a record shows may be the one
+    /// before. A scenario that does not get there in its 120 s fails, with the table shown.
+    pub async fn wait_for_table(&self, name: &str, what: &str, ok: impl Fn(&[String], &[Vec<String>]) -> bool) {
+        loop {
+            let (header, rows) = self.table(name);
+            if ok(&header, &rows) {
+                return;
+            }
+            if local_ms() - self.began_ms > LIMIT_MS {
+                panic!("waited in vain for {what} in {name}: {header:?} {rows:?}");
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    }
+
     /// A table the bot wrote next to its journal: (header, rows).
     pub fn table(&self, name: &str) -> (Vec<String>, Vec<Vec<String>>) {
         let raw = std::fs::read_to_string(self.dir.path().join(name)).unwrap_or_default();

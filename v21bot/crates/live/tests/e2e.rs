@@ -44,9 +44,9 @@ async fn shot_at_840_and_a_mid_minute_signal() {
     }
     assert_eq!(of(&recs, "demo").len(), 2);
     assert_eq!(of(&recs, "entry").len(), 2);
-    let (header, rows) = stand.table("trades.csv");
-    let status = header.iter().position(|h| h == "status").unwrap();
-    assert_eq!(rows.iter().map(|r| r[status].as_str()).collect::<Vec<_>>(), ["win", "win"]);
+    // the table is rebuilt after the settlements are journaled
+    let won = |header: &[String], rows: &[Vec<String>]| header.iter().position(|h| h == "status").is_some_and(|k| rows.len() == 2 && rows.iter().all(|r| r[k] == "win"));
+    stand.wait_for_table("trades.csv", "two won trades", won).await;
     let texts: Vec<String> = stand.tg.sent().iter().filter_map(|m| m["text"].as_str().map(str::to_string)).collect();
     assert!(texts.iter().any(|t| t.starts_with("🟢 BTC Up · окно 03:15–03:30 · демо: $20.00 по 0.800")), "{texts:?}");
     assert!(texts.iter().any(|t| t.starts_with("🟢 ETH Up")), "{texts:?}");
