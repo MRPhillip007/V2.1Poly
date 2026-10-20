@@ -35,8 +35,8 @@ fn events() -> Vec<Value> {
         .collect()
 }
 
-async fn servers(blocked: bool, binance_refuses: bool) -> (Config, Vec<Box<dyn std::any::Any>>) {
-    let pm = FakePolymarket::start(blocked, 100).await;
+async fn servers(geoblock: (bool, &'static str), binance_refuses: bool) -> (Config, Vec<Box<dyn std::any::Any>>) {
+    let pm = FakePolymarket::start(geoblock, 100).await;
     let primary = FakeBinance::start(0, binance_refuses, 100).await;
     let mirror = FakeBinance::start(0, false, 100).await;
     let clob = FakeClob::start().await;
@@ -57,22 +57,33 @@ async fn servers(blocked: bool, binance_refuses: bool) -> (Config, Vec<Box<dyn s
 
 #[tokio::test(flavor = "multi_thread")]
 async fn check_against_fake_servers_is_0_and_a_geoblock_is_2() {
-    let (cfg, _keep) = servers(false, false).await;
+    let (cfg, _keep) = servers((false, "ES"), false).await;
     let (text, code) = check_with(&cfg, Duration::from_millis(1500)).await;
     assert_eq!(code, 0, "{text}");
-    for line in ["геоблок: открыто (IE)", "часы: Binance", "путь до CLOB: медиана", "Binance основной: первая сделка", "Binance запасной: первая сделка", "Polymarket: копия 1 —", "правила в порядке", "итог: можно работать"] {
+    for line in ["геоблок: открыто (ES)", "часы: Binance", "путь до CLOB: медиана", "Binance основной: первая сделка", "Binance запасной: первая сделка", "Polymarket: копия 1 —", "правила в порядке", "итог: можно работать"] {
         assert!(text.contains(line), "{line}:\n{text}");
     }
 
-    let (cfg, _keep) = servers(true, false).await;
+    // close-only on the site and the API (the United States): no new position
+    let (cfg, _keep) = servers((true, "US"), false).await;
     let (text, code) = check_with(&cfg, Duration::from_millis(500)).await;
     assert_eq!(code, 2, "{text}");
-    assert!(text.contains("геоблок: закрыто (US)") && text.contains("итог: работать нельзя"), "{text}");
+    assert!(text.contains("геоблок: API закрыт для новых позиций (US)") && text.contains("итог: работать нельзя"), "{text}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_country_closed_on_the_site_only_trades_through_the_api() {
+    // the geoblock answers for polymarket.com: Ireland is close-only on the site, «the API itself is not
+    // restricted» (docs.polymarket.com/developers/CLOB/geoblock) — the server in Dublin, 20.10
+    let (cfg, _keep) = servers((true, "IE"), false).await;
+    let (text, code) = check_with(&cfg, Duration::from_millis(1500)).await;
+    assert_eq!(code, 0, "{text}");
+    assert!(text.contains("геоблок: сайт закрыт, API открыт (IE)") && text.contains("итог: можно работать"), "{text}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_primary_binance_that_answers_451_is_a_warning() {
-    let (cfg, _keep) = servers(false, true).await;
+    let (cfg, _keep) = servers((false, "ES"), true).await;
     let (text, code) = check_with(&cfg, Duration::from_millis(500)).await;
     assert_eq!(code, 1, "{text}");
     assert!(text.contains("Binance основной: недоступен") && text.contains("Binance запасной: первая сделка"), "{text}");

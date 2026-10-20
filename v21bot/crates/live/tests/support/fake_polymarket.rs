@@ -28,10 +28,12 @@ fn book(token: &str, ts: i64) -> String {
 }
 
 impl FakePolymarket {
-    pub async fn start(blocked: bool, every_ms: i64) -> FakePolymarket {
+    /// `geoblock`: what the geoblock answers, (blocked, country).
+    pub async fn start(geoblock: (bool, &'static str), every_ms: i64) -> FakePolymarket {
+        let (blocked, country) = geoblock;
         let app = axum::Router::new().route(
             "/api/geoblock",
-            get(move || async move { axum::Json(serde_json::json!({"blocked": blocked, "ip": "127.0.0.1", "country": if blocked { "US" } else { "IE" }, "region": "L"})) }),
+            get(move || async move { axum::Json(serde_json::json!({"blocked": blocked, "ip": "127.0.0.1", "country": country, "region": "L"})) }),
         );
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let geoblock = format!("http://{}/api/geoblock", listener.local_addr().unwrap());

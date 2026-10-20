@@ -27,6 +27,9 @@ const RTT_TRIES: usize = 10;
 const FIRST_TRADE_WAIT: Duration = Duration::from_secs(5);
 const NTP_WAIT: Duration = Duration::from_secs(4);
 const COINS: [Coin; 3] = [Coin::Btc, Coin::Eth, Coin::Sol];
+/// Where Polymarket closes its site only: «Close-only on the Polymarket frontend; the API itself is not
+/// restricted» (docs.polymarket.com/developers/CLOB/geoblock, read 2026-10-20; Malta for sports only).
+const SITE_ONLY: [&str; 5] = ["IE", "JP", "MT", "NL", "KR"];
 
 /// The text of the check and its exit code.
 pub async fn check(cfg: &Config) -> (String, i32) {
@@ -45,14 +48,17 @@ pub async fn check_with(cfg: &Config, listen: Duration) -> (String, i32) {
     let mut lines = vec![];
     let mut level = 0;
 
-    // the geoblock
+    // the geoblock: it answers for the site, polymarket.com; where only the site is closed the bot's
+    // orders, which go through the API, are not restricted
     match async { http.get(&cfg.urls.geoblock).send().await?.json::<serde_json::Value>().await }.await {
         Ok(v) => {
             let country = v["country"].as_str().unwrap_or("?").to_string();
-            if v["blocked"] == true {
-                raise(&mut level, &mut lines, 2, format!("геоблок: закрыто ({country})"));
-            } else {
+            if v["blocked"] != true {
                 raise(&mut level, &mut lines, 0, format!("геоблок: открыто ({country})"));
+            } else if SITE_ONLY.contains(&country.as_str()) {
+                raise(&mut level, &mut lines, 0, format!("геоблок: сайт закрыт, API открыт ({country})"));
+            } else {
+                raise(&mut level, &mut lines, 2, format!("геоблок: API закрыт для новых позиций ({country})"));
             }
         }
         Err(e) => raise(&mut level, &mut lines, 1, format!("геоблок: нет ответа ({e})")),
