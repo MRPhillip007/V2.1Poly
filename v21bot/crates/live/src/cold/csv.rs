@@ -106,7 +106,7 @@ type Row = Map<String, Value>;
 /// Writes the three tables into `dir` again. False if a table could not be written (another program
 /// holds it): the others are, and the next call tries again.
 pub fn rebuild_tables(journal: &Journal, dir: &Path) -> Result<bool> {
-    let recs = journal.all()?;
+    let recs = journal.all_but_bbo()?;
     let mut ok = true;
     for (name, columns, rows) in [
         ("trades.csv", &TRADES_COLUMNS[..], trade_rows(&recs)),

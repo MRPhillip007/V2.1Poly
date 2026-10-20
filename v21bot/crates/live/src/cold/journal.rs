@@ -11,7 +11,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -27,6 +27,8 @@ use crate::shared::utc::now_iso;
 const SYNC_EVERY: Duration = Duration::from_secs(1);
 /// Attempts to replace the state file (a virus scanner can hold it for a moment).
 const STATE_ATTEMPTS: u32 = 3;
+/// How a line of a `bbo` record begins.
+const BBO_LINE: &[u8] = br#"{"kind":"bbo""#;
 
 pub struct Journal {
     path: PathBuf,
@@ -103,9 +105,30 @@ impl Journal {
             .collect())
     }
 
+    /// Every record but the `bbo` rows, in the order appended. The rows are most of the journal and
+    /// only the reconciliation reads them: their lines are skipped unread (`kind` comes first in every
+    /// line), and the file is read a line at a time. A torn line is skipped.
+    pub fn all_but_bbo(&self) -> Result<Vec<Value>> {
+        let file = File::open(&self.path).with_context(|| format!("{}", self.path.display()))?;
+        let mut out = Vec::new();
+        for line in BufReader::new(file).split(b'\n') {
+            let line = line.with_context(|| format!("{}", self.path.display()))?;
+            if line.starts_with(BBO_LINE) {
+                continue;
+            }
+            if let Ok(rec) = serde_json::from_slice::<Value>(&line)
+                && rec.is_object()
+            {
+                out.push(rec);
+            }
+        }
+        Ok(out)
+    }
+
     /// The records of `kind`, in the order appended.
     pub fn records(&self, kind: &str) -> Result<Vec<Value>> {
-        Ok(self.all()?.into_iter().filter(|r| r["kind"] == kind).collect())
+        let recs = if kind == "bbo" { self.all()? } else { self.all_but_bbo()? };
+        Ok(recs.into_iter().filter(|r| r["kind"] == kind).collect())
     }
 }
 
@@ -221,7 +244,7 @@ fn position_of(e: &Value) -> Option<DemoPosition> {
 /// The trades of the journal the state does not know are opened, and the settlements it missed applied.
 fn reconcile(st: &mut State, journal: &Journal) -> Result<()> {
     let known = st.traded.clone();
-    let recs = journal.all()?;
+    let recs = journal.all_but_bbo()?;
     for e in recs.iter().filter(|r| r["kind"] == "entry") {
         let Some(pos) = position_of(e) else { bail!("an entry of the journal cannot be read: {e}") };
         let key = (pos.s, pos.coin);

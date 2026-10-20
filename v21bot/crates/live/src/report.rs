@@ -49,7 +49,7 @@ fn period(first: i64, last: i64) -> String {
 
 /// The report of the windows whose start is in `from..to` (unix seconds; open ends when `None`).
 pub fn report(journal: &Journal, strategy: &Strategy, from: Option<i64>, to: Option<i64>) -> String {
-    let recs = match journal.all() {
+    let recs = match journal.all_but_bbo() {
         Ok(r) => r,
         Err(e) => return format!("Отчёт v21bot · журнал не читается: {e:#}"),
     };

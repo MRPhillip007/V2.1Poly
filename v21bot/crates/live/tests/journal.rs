@@ -73,6 +73,21 @@ fn cell<'a>(header: &[String], row: &'a [String], column: &str) -> &'a str {
 // ---------------------------------------------------------------- the journal
 
 #[test]
+fn the_tables_and_the_state_read_the_journal_without_its_bbo_rows() {
+    // the bbo rows are most of the journal (98% of the home run's 1.3 MB an hour) and only the
+    // reconciliation reads them: the other readers skip their lines unread
+    let dir = tempfile::tempdir().unwrap();
+    let mut j = Journal::open(&dir.path().join("journal.jsonl")).unwrap();
+    j.append("start", json!({"mode": "demo"})).unwrap();
+    j.append("bbo", json!({"s": S, "coin": "btc", "rows": [[1, 0.5, 0.6]]})).unwrap();
+    j.append("window", json!({"s": S})).unwrap();
+    let kinds = |recs: Vec<Value>| recs.iter().map(|r| r["kind"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+    assert_eq!(kinds(j.all_but_bbo().unwrap()), ["start", "window"]);
+    assert_eq!(kinds(j.all().unwrap()), ["start", "bbo", "window"]);
+    assert_eq!(kinds(j.records("bbo").unwrap()), ["bbo"]);
+}
+
+#[test]
 fn records_are_strict_json_with_kind_and_time() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("out/journal.jsonl");

@@ -641,7 +641,7 @@ impl Cold {
             return;
         }
         let date = date.to_string();
-        match self.journal.all() {
+        match self.journal.all_but_bbo() {
             Ok(recs) => {
                 let d = day_summary(&recs, &date, self.desk.account().cash, self.cfg.stake_usd);
                 self.telegram(fmt_summary(&d));
