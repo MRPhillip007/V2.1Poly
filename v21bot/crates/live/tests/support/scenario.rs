@@ -47,11 +47,13 @@ pub struct Setup {
     pub primary_451: bool,
     /// What an Up contract of BTC, ETH and SOL pays.
     pub payout_up: [f64; 3],
+    /// Both Binance streams are down in these ms of the window.
+    pub binance_cut: Option<(i64, i64)>,
 }
 
 impl Default for Setup {
     fn default() -> Self {
-        Setup { script: vec![], cuts: vec![], bank_usd: 100.0, primary_451: false, payout_up: [1.0; 3] }
+        Setup { script: vec![], cuts: vec![], bank_usd: 100.0, primary_451: false, payout_up: [1.0; 3], binance_cut: None }
     }
 }
 
@@ -102,6 +104,10 @@ impl Stand {
         let market = FakeMarket::start(S, shift_ms, TOKENS.iter().map(|t| t.to_string()).collect(), books, setup.script, setup.cuts).await;
         let primary = FakeBinance::start(shift_ms, setup.primary_451, 100).await;
         let mirror = FakeBinance::start(shift_ms, false, 100).await;
+        if let Some((from, until)) = setup.binance_cut {
+            primary.cut(S0 + from, S0 + until);
+            mirror.cut(S0 + from, S0 + until);
+        }
         let gamma = FakeGamma::start(events(setup.payout_up)).await;
         let clob = FakeClob::start().await;
         for k in 0..3 {

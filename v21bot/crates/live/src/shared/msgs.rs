@@ -119,8 +119,10 @@ pub enum HotMsg {
     /// An item of the market channel and when it came (exchange clock).
     Feed { rx_ms: i64, item: FeedItem },
     Trade(Trade),
-    /// Binance seconds lost in a drop of the stream: to be filled from klines.
-    Gap { coin: Coin, q0: i64, q1: i64 },
+    /// Binance seconds lost: unknown until klines fill them. `fill`: the stream is back (the first trade
+    /// after the gap), the klines can be asked; else the gap is only marked (a drop, whose second is
+    /// still open, or the time after a warm-up that came before the stream's first trade).
+    Gap { coin: Coin, q0: i64, q1: i64, fill: bool },
     Fast(FastOut),
     /// A copy of the market channel connected or dropped (`code`: the close code).
     Copy { copy: u8, up: bool, code: Option<u16> },

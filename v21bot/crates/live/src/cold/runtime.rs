@@ -279,9 +279,11 @@ impl Cold {
             match msg {
                 HotMsg::Feed { rx_ms, item } => self.exact.on_item(rx_ms, item),
                 HotMsg::Trade(t) => self.exact.on_trade(&t),
-                HotMsg::Gap { coin, q0, q1 } => {
+                HotMsg::Gap { coin, q0, q1, fill } => {
                     self.exact.on_gap(coin, q0, q1);
-                    self.backfill(coin, q0, q1, 0);
+                    if fill {
+                        self.backfill(coin, q0, q1, 0);
+                    }
                 }
                 HotMsg::Fast(out) => self.on_fast(out, now),
                 HotMsg::Copy { .. } => {}

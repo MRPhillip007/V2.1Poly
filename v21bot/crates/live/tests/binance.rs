@@ -198,6 +198,38 @@ fn a_repeated_disconnect_extends_the_same_gap() {
 }
 
 #[test]
+fn closes_after_a_warm_up_without_the_stream_wait_for_its_first_trade() {
+    // the warm-up's klines came before the stream's first trade (paper warmed up only once the stream
+    // was up): the seconds after them are a gap until that trade, which asks for their klines
+    let (mut g, mut c) = (GapTracker::new(&[Coin::Btc]), LiveCloses::new());
+    let warm = [(98_000, 9.0), (99_000, 10.0)];
+    c.add_klines(&warm);
+    assert_eq!(g.on_warm_up(Coin::Btc, &warm), Some((Coin::Btc, 100, 100)));
+    c.mark_gap(100, 100);
+    assert_eq!(closes_get(&c, 99, 103), None, "not carried over the time without the stream");
+    // a trade from before the gap leaves it open
+    assert_eq!(feed(&mut g, &mut c, trade(Coin::Btc, 99_500, 10.5)), None);
+    assert_eq!(feed(&mut g, &mut c, trade(Coin::Btc, 104_100, 12.0)), Some((Coin::Btc, 100, 103)));
+}
+
+#[test]
+fn a_drop_before_the_first_trade_after_a_warm_up_starts_at_the_last_trade() {
+    let (mut g, mut c) = (GapTracker::new(&[Coin::Btc]), LiveCloses::new());
+    assert_eq!(g.on_warm_up(Coin::Btc, &[(99_000, 10.0)]), Some((Coin::Btc, 100, 100)));
+    feed(&mut g, &mut c, trade(Coin::Btc, 99_500, 10.5));
+    assert_eq!(disconnect(&mut g, &mut c, 101_200), [(Coin::Btc, 99, 101)]);
+}
+
+#[test]
+fn a_warm_up_after_the_first_trade_leaves_no_gap() {
+    let (mut g, mut c) = (GapTracker::new(&[Coin::Btc]), LiveCloses::new());
+    feed(&mut g, &mut c, trade(Coin::Btc, 100_200, 10.0));
+    assert_eq!(g.on_warm_up(Coin::Btc, &[(99_000, 10.0)]), None);
+    // nor do the klines of a backfill
+    assert_eq!(g.on_warm_up(Coin::Btc, &[(101_000, 10.0)]), None);
+}
+
+#[test]
 fn a_disconnect_before_any_trade_marks_nothing() {
     let (mut g, mut c) = (GapTracker::new(&[Coin::Sol]), LiveCloses::new());
     assert_eq!(disconnect(&mut g, &mut c, 50_000), []);

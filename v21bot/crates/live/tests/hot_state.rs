@@ -40,7 +40,14 @@ fn hot(room: usize) -> (HotState, rtrb::Consumer<HotMsg>) {
         h.on_cold(ColdMsg::Klines { coin, rows });
     }
     h.on_cold(ColdMsg::Arm(arm()));
+    let mut from_hot = from_hot;
+    drain(&mut from_hot); // the gaps after the closes, which reach past the trades of the tests
     (h, from_hot)
+}
+
+/// The gaps of Binance among `msgs`: (coin, q0, q1, fill).
+fn gaps(msgs: Vec<HotMsg>) -> Vec<(Coin, i64, i64, bool)> {
+    msgs.into_iter().filter_map(|m| if let HotMsg::Gap { coin, q0, q1, fill } = m { Some((coin, q0, q1, fill)) } else { None }).collect()
 }
 
 fn drain(q: &mut rtrb::Consumer<HotMsg>) -> Vec<HotMsg> {
@@ -135,8 +142,18 @@ fn a_drop_of_binance_marks_the_gap_and_asks_for_the_backfill() {
     h.on_binance(false, false, S0 + 832_500);
     h.on_binance(true, true, S0 + 833_000);
     h.on_trade(&Trade { coin: Coin::Btc, ts_ms: S0 + 834_200, price: 100.6 }, S0 + 834_250);
-    let gaps: Vec<(Coin, i64, i64)> = drain(&mut q).into_iter().filter_map(|m| if let HotMsg::Gap { coin, q0, q1 } = m { Some((coin, q0, q1)) } else { None }).collect();
-    assert_eq!(gaps, [(Coin::Btc, S + 830, S + 832), (Coin::Btc, S + 830, S + 833)]);
+    // the drop only marks its gap: its second is still open (paper's rule); the first trade after it
+    // asks for the klines
+    assert_eq!(gaps(drain(&mut q)), [(Coin::Btc, S + 830, S + 832, false), (Coin::Btc, S + 830, S + 833, true)]);
+}
+
+#[test]
+fn the_warm_up_before_any_trade_leaves_a_gap_for_the_first_trade_to_fill() {
+    let (to_cold, mut q) = rtrb::RingBuffer::new(1024);
+    let mut h = HotState::new(load_strategy(V2, V21).unwrap().v21, i64::MAX / 4, 2, to_cold);
+    h.on_cold(ColdMsg::Klines { coin: Coin::Btc, rows: vec![(S0 + 828_000, 100.0), (S0 + 829_000, 100.1)] });
+    h.on_trade(&Trade { coin: Coin::Btc, ts_ms: S0 + 834_200, price: 100.6 }, S0 + 834_250);
+    assert_eq!(gaps(drain(&mut q)), [(Coin::Btc, S + 830, S + 830, false), (Coin::Btc, S + 830, S + 833, true)]);
 }
 
 #[test]

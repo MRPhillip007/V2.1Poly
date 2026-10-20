@@ -123,17 +123,37 @@ impl GapTracker {
         GapTracker { coins: coins.to_vec(), last_ms: [None; 3], gap_start: [None; 3] }
     }
 
-    /// A trade came: if it is the first one after a drop, the seconds `q0..=q1` to fill from klines
-    /// (the second of the last trade before the drop up to the one before this trade).
+    /// A trade came: if it is the first one after a gap, the seconds `q0..=q1` to fill from klines
+    /// (the gap's first second up to the one before this trade). A trade in the gap's first second
+    /// fills it alone; one from before it leaves the gap open.
     pub fn on_trade(&mut self, t: &Trade) -> Option<(Coin, i64, i64)> {
         if !self.coins.contains(&t.coin) {
             return None;
         }
         let i = slot(t.coin);
         let q = t.ts_ms.div_euclid(1000);
-        let backfill = self.gap_start[i].take().filter(|&start| q > start).map(|start| (t.coin, start, q - 1));
+        let backfill = match self.gap_start[i] {
+            Some(start) if q >= start => {
+                self.gap_start[i] = None;
+                (q > start).then_some((t.coin, start, q - 1))
+            }
+            _ => None,
+        };
         self.last_ms[i] = Some(self.last_ms[i].map_or(t.ts_ms, |last| last.max(t.ts_ms)));
         backfill
+    }
+
+    /// The klines of the warm-up came: if the stream has brought no trade of the coin yet, the seconds
+    /// after them are unknown until it does (`paper` warmed up only once the stream was up). The gap
+    /// to mark — its first second — or `None`.
+    pub fn on_warm_up(&mut self, coin: Coin, rows: &[(i64, f64)]) -> Option<(Coin, i64, i64)> {
+        let i = slot(coin);
+        if !self.coins.contains(&coin) || self.last_ms[i].is_some() || self.gap_start[i].is_some() {
+            return None;
+        }
+        let q = rows.iter().map(|r| r.0.div_euclid(1000)).max()? + 1;
+        self.gap_start[i] = Some(q);
+        Some((coin, q, q))
     }
 
     /// The stream dropped at `at_ms`: for each coin that has traded, the gap from the second of its
@@ -143,7 +163,8 @@ impl GapTracker {
         for &coin in &self.coins {
             let i = slot(coin);
             let Some(last) = self.last_ms[i] else { continue };
-            let start = self.gap_start[i].unwrap_or(last.div_euclid(1000));
+            let last_s = last.div_euclid(1000);
+            let start = self.gap_start[i].map_or(last_s, |g| g.min(last_s));
             out.push((coin, start, at_ms.div_euclid(1000)));
             self.gap_start[i] = Some(start);
         }

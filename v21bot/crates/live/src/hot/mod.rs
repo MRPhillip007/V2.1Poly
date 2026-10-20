@@ -111,7 +111,13 @@ impl HotState {
     pub fn on_cold(&mut self, msg: ColdMsg) {
         match msg {
             ColdMsg::Arm(arm) => self.arm(&arm),
-            ColdMsg::Klines { coin, rows } => self.engine.on_klines(coin, &rows),
+            ColdMsg::Klines { coin, rows } => {
+                self.engine.on_klines(coin, &rows);
+                if let Some((coin, q0, q1)) = self.gaps.on_warm_up(coin, &rows) {
+                    self.engine.on_gap(coin, q0, q1);
+                    push(&mut self.to_cold, &mut self.health, HotMsg::Gap { coin, q0, q1, fill: false });
+                }
+            }
             ColdMsg::Fill { coin, filled } => self.engine.on_fill(coin, filled),
             ColdMsg::Pause(pause) => self.engine.set_pause(pause),
         }
@@ -162,7 +168,7 @@ impl HotState {
         push(&mut self.to_cold, &mut self.health, HotMsg::Trade(*t));
         if let Some((coin, q0, q1)) = self.gaps.on_trade(t) {
             self.engine.on_gap(coin, q0, q1);
-            push(&mut self.to_cold, &mut self.health, HotMsg::Gap { coin, q0, q1 });
+            push(&mut self.to_cold, &mut self.health, HotMsg::Gap { coin, q0, q1, fill: true });
         }
     }
 
@@ -174,7 +180,7 @@ impl HotState {
             for k in 0..self.gap_rows.len() {
                 let (coin, q0, q1) = self.gap_rows[k];
                 self.engine.on_gap(coin, q0, q1);
-                push(&mut self.to_cold, &mut self.health, HotMsg::Gap { coin, q0, q1 });
+                push(&mut self.to_cold, &mut self.health, HotMsg::Gap { coin, q0, q1, fill: false });
             }
         }
         push(&mut self.to_cold, &mut self.health, HotMsg::Binance { up, fallback });

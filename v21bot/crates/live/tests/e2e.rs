@@ -7,7 +7,8 @@ mod support;
 
 use serde_json::Value;
 use support::fake_market::Cut;
-use support::scenario::{asks, of, Setup, Stand, BTC, ETH, S, SOL};
+use support::scenario::{asks, of, Setup, Stand, BTC, ETH, S, S0, SOL};
+use v21_live::shared::utc::iso_ms;
 
 /// The asks of an Up token in the band, and out of it.
 const IN: &[(f64, f64)] = &[(0.80, 100.0)];
@@ -198,5 +199,32 @@ async fn restart_mid_window_restores_from_the_journal() {
     assert_eq!(btc["fast_reason"], Value::from("монета уже в сделке или 2 выстрела в окне"), "{btc}");
     assert!(of(&recs, "start").len() == 2 && S > 0);
     second.stop().unwrap();
+    stand.assert_no_errors();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "end to end: about 100 s"]
+async fn the_exact_decision_waits_for_the_seconds_a_drop_of_binance_lost() {
+    // Binance drops at 838.5 s and is back from 846 s; BTC's check starts at 840 s and its z needs the
+    // close of 839 s. As in paper, the drop's seconds are a gap until the first trade after it, and only
+    // then are their klines asked: none at the drop, whose second is still open
+    let stand = Stand::start(Setup { script: vec![asks(BTC, 835_000, IN)], binance_cut: Some((838_500, 846_000)), ..Setup::default() }).await;
+    let bot = stand.bot();
+    let recs = stand.wait_for("BTC's signal", |r| of(r, "signal").iter().any(|s| s["coin"] == "btc")).await;
+    let s = signal(&recs, "btc", 840.0..840.01);
+    let back = iso_ms(S0 + 846_000 - stand.shift_ms);
+    assert!(s["ts_utc"].as_str().unwrap() >= back.as_str(), "decided before Binance was back ({back}): {s}");
+    assert_eq!(s["decision"], "вход", "{s}");
+    // in the minute, one backfill: from the drop's second to the one before the first trade back
+    let spans: Vec<Vec<i64>> = stand
+        .primary
+        .asked()
+        .iter()
+        .filter(|a| a.starts_with("klines BTCUSDT"))
+        .map(|a| a.split(' ').skip(2).map(|x| x.parse().unwrap()).collect::<Vec<i64>>())
+        .filter(|span| span[0] >= S0 + 835_000)
+        .collect();
+    assert!(matches!(spans[..], [ref span] if span[0] == S0 + 838_000 && span[1] >= S0 + 845_999), "{spans:?}");
+    bot.stop().unwrap();
     stand.assert_no_errors();
 }

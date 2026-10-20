@@ -2,6 +2,7 @@
 //! time plus a shift), and the trade stream `/stream?streams=…`, which sends an aggTrade of each coin
 //! every `every_ms`, stamped with the shifted time. The prices rise 0.0006% a second from the
 //! coin's base: z is far above 1.25 for Up. `refuse`: every request and every connection gets 451.
+//! `cut`: in a span of the exchange's clock the stream's connections are dropped and refused.
 
 #![allow(clippy::result_large_err, reason = "the handshake callback's error type is tungstenite's")]
 
@@ -39,12 +40,20 @@ struct Shared {
     asked: Arc<Mutex<Vec<String>>>,
 }
 
+/// The span of the exchange's clock (ms) the stream is down in.
+type CutSpan = Arc<Mutex<Option<(i64, i64)>>>;
+
+fn in_cut(cut: &CutSpan, now_ms: i64) -> bool {
+    cut.lock().unwrap().is_some_and(|(from, until)| (from..until).contains(&now_ms))
+}
+
 pub struct FakeBinance {
     /// `http://…`: the REST base.
     pub rest: String,
     /// `ws://…/stream`: the stream base.
     pub ws: String,
     asked: Arc<Mutex<Vec<String>>>,
+    cut: CutSpan,
 }
 
 async fn klines_route(State(s): State<Shared>, Query(q): Query<HashMap<String, String>>) -> Response {
@@ -92,8 +101,15 @@ impl FakeBinance {
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let ws = format!("ws://{}/stream", listener.local_addr().unwrap());
+        let cut = CutSpan::default();
+        let cut_ws = cut.clone();
         tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
+                if in_cut(&cut_ws, local_ms() + shift_ms) {
+                    drop(stream);
+                    continue;
+                }
+                let cut = cut_ws.clone();
                 tokio::spawn(async move {
                     let check = |_: &Request, resp: WsResponse| -> Result<WsResponse, ErrorResponse> {
                         if refuse {
@@ -107,6 +123,9 @@ impl FakeBinance {
                     let Ok(mut ws) = tokio_tungstenite::accept_hdr_async(stream, check).await else { return };
                     let mut id = 0;
                     loop {
+                        if in_cut(&cut, local_ms() + shift_ms) {
+                            return; // dropped without a close frame
+                        }
                         for coin in COINS {
                             id += 1;
                             if ws.send(Message::text(agg(coin, local_ms() + shift_ms, id))).await.is_err() {
@@ -118,7 +137,12 @@ impl FakeBinance {
                 });
             }
         });
-        FakeBinance { rest, ws, asked: shared.asked }
+        FakeBinance { rest, ws, asked: shared.asked, cut }
+    }
+
+    /// The stream is down from `from_ms` until `until_ms` (the exchange's clock).
+    pub fn cut(&self, from_ms: i64, until_ms: i64) {
+        *self.cut.lock().unwrap() = Some((from_ms, until_ms));
     }
 
     /// The REST requests so far.
