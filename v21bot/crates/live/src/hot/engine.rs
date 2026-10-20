@@ -27,8 +27,8 @@ use crate::shared::msgs::{CoinArm, FastOut, FastReason, FastSkip, ShotRecord, Wi
 /// Coins shot per window at most: $40 at risk (spec §6.1).
 const MAX_SHOTS: usize = 2;
 /// The pauses of the feeds (spec §7.4).
-const PM_SILENT: &str = "пауза: лента Polymarket молчит";
-const BN_SILENT: &str = "пауза: Binance молчит";
+pub const PM_SILENT: &str = "пауза: лента Polymarket молчит";
+pub const BN_SILENT: &str = "пауза: Binance молчит";
 /// Checks of a coin in a window the lists are reserved for.
 const CHECKS: usize = 128;
 

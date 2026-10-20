@@ -6,6 +6,10 @@ use v21_core::params::Params;
 use v21_core::window::{Coin, Side};
 use v21_core::zscore::ZInfo;
 
+use crate::health::HotHealth;
+use crate::hot::binance::Trade;
+use crate::hot::items::FeedItem;
+
 /// A coin of the window, as both engines need it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CoinArm {
@@ -107,6 +111,35 @@ pub enum FastOut {
     Skip(FastSkip),
     /// The decision waits: for the number of the coin, or for the answer to the coin's last shot.
     Wait { s: i64, coin: Coin, t_trig: f64 },
+}
+
+/// What the hot thread tells the cold runtime.
+#[derive(Clone, Debug)]
+pub enum HotMsg {
+    /// An item of the market channel and when it came (exchange clock).
+    Feed { rx_ms: i64, item: FeedItem },
+    Trade(Trade),
+    /// Binance seconds lost in a drop of the stream: to be filled from klines.
+    Gap { coin: Coin, q0: i64, q1: i64 },
+    Fast(FastOut),
+    /// A copy of the market channel connected or dropped (`code`: the close code).
+    Copy { copy: u8, up: bool, code: Option<u16> },
+    /// No copy of the market channel is connected any more (`lost`), or one is again.
+    Coverage { lost: bool, at_ms: i64 },
+    Binance { up: bool, fallback: bool },
+    /// The counts of the last minute; boxed, so that the queue's slots stay small.
+    Health(Box<HotHealth>),
+}
+
+/// What the cold runtime tells the hot thread.
+#[derive(Clone, Debug)]
+pub enum ColdMsg {
+    Arm(WindowArm),
+    Klines { coin: Coin, rows: Vec<(i64, f64)> },
+    /// The answer to the coin's last shot: whether anything was bought.
+    Fill { coin: Coin, filled: bool },
+    /// The clock, the money or the stop pause the shots; `None` lifts the pause.
+    Pause(Option<&'static str>),
 }
 
 /// The 32-byte big-endian form of a decimal token id (a uint256), as the archive stores the ids; `None`

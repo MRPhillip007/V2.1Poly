@@ -8,7 +8,7 @@
 use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -119,7 +119,11 @@ fn run_bot(config: PathBuf, secrets: PathBuf) -> Result<()> {
         bail!("mode = \"live\" в {}: боевой режим будет в вехе 3, сейчас — только mode = \"demo\"", config.display());
     }
     let secrets = Secrets::load(&secrets)?;
-    v21_live::run::run(cfg, secrets, Arc::new(AtomicBool::new(false)))
+    // Ctrl-C and SIGTERM (systemd's stop) end the bot: it saves its state and its journal first
+    let stop = Arc::new(AtomicBool::new(false));
+    let flag = stop.clone();
+    ctrlc::set_handler(move || flag.store(true, Ordering::Relaxed)).context("cannot catch Ctrl-C and SIGTERM")?;
+    v21_live::run::run(cfg, secrets, stop)
 }
 
 fn main() -> ExitCode {
