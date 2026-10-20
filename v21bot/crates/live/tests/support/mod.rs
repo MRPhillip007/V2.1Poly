@@ -4,6 +4,8 @@
 pub mod fake_binance;
 pub mod fake_clob;
 pub mod fake_gamma;
+pub mod fake_market;
 pub mod fake_polymarket;
 pub mod fake_telegram;
 pub mod fake_ws;
+pub mod scenario;
