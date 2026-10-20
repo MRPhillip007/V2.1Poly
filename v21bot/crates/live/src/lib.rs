@@ -3,6 +3,7 @@
 
 pub mod book;
 pub mod cold;
+pub mod health;
 pub mod hot;
 pub mod run;
 pub mod shared;

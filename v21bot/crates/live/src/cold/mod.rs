@@ -10,6 +10,7 @@ pub mod exact;
 pub mod gamma;
 pub mod journal;
 pub mod ntp;
+pub mod telegram;
 
 /// The HTTP client of the cold runtime: rustls on ring, a 10-s timeout per request.
 pub fn http_client() -> reqwest::Client {
