@@ -16,8 +16,10 @@ use v21_core::live_closes::LiveCloses;
 use v21_core::window::Coin;
 use v21_live::cold::binance_rest::{klines, server_time_ms};
 use v21_live::cold::http_client;
+use v21_live::cold::ntp::clock_offset_ms;
 use v21_live::hot::binance::{backfill_rows, parse_agg, BinanceEvent, BinanceStream, GapTracker, Trade};
 use v21_live::hot::ws::CopyTimes;
+use v21_live::shared::clock::local_ms;
 
 fn ms(n: u64) -> Duration {
     Duration::from_millis(n)
@@ -268,4 +270,57 @@ async fn server_time_tries_the_fallback() {
     assert!(sent <= received);
     let (refused, _) = binance_rest(true).await;
     assert!(server_time_ms(&http_client(), &[refused]).await.is_err());
+}
+
+/// A Binance REST whose `/api/v3/time` is this machine's clock, over keep-alive connections: a new
+/// connection is served `connect_ms` after it opens (as a TLS handshake far away takes), and every
+/// answer has `status` (200 or 451) after `answer_ms`.
+async fn clock_rest(connect_ms: u64, status: u16, answer_ms: u64) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        while let Ok((mut sock, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                tokio::time::sleep(ms(connect_ms)).await;
+                let (mut buf, mut have) = (vec![0u8; 8192], 0);
+                loop {
+                    let n = match sock.read(&mut buf[have..]).await {
+                        Ok(0) | Err(_) => return,
+                        Ok(n) => n,
+                    };
+                    have += n;
+                    while let Some(end) = buf[..have].windows(4).position(|w| w == b"\r\n\r\n") {
+                        tokio::time::sleep(ms(answer_ms)).await;
+                        let body = if status == 200 { format!(r#"{{"serverTime":{}}}"#, local_ms()) } else { String::new() };
+                        let head = format!("HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n", body.len());
+                        if sock.write_all(format!("{head}{body}").as_bytes()).await.is_err() {
+                            return;
+                        }
+                        buf.copy_within(end + 4..have, 0);
+                        have -= end + 4;
+                    }
+                }
+            });
+        }
+    });
+    base
+}
+
+#[tokio::test]
+async fn the_server_time_is_timed_on_the_address_that_answers() {
+    // the primary refuses after 300 ms (from the PC at home: Binance +390 ms against NTP −23 ms)
+    let refused = clock_rest(0, 451, 300).await;
+    let mirror = clock_rest(0, 200, 0).await;
+    let (server, sent, received) = server_time_ms(&http_client(), &[refused, mirror]).await.unwrap();
+    let offset = clock_offset_ms(server, sent, received);
+    assert!(offset.abs() <= 20, "offset {offset} ms");
+}
+
+#[tokio::test]
+async fn the_server_time_is_timed_over_a_connection_already_open() {
+    // a new connection takes 300 ms to serve: the time is not taken over it
+    let slow = clock_rest(300, 200, 0).await;
+    let (server, sent, received) = server_time_ms(&http_client(), &[slow]).await.unwrap();
+    let offset = clock_offset_ms(server, sent, received);
+    assert!(offset.abs() <= 20, "offset {offset} ms");
 }

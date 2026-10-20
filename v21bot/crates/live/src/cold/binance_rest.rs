@@ -2,13 +2,16 @@
 //! clock. Each request tries the addresses in order: api.binance.com, then the mirror
 //! data-api.binance.vision (the first answers HTTP 451 from some places).
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use serde_json::Value;
 
 use crate::shared::clock::local_ms;
 
 /// The most klines one request gives.
 const PAGE: i64 = 1000;
+/// The time is asked this many times over the open connection; the answer that came back soonest
+/// is kept.
+const TIME_SAMPLES: usize = 3;
 
 /// GET `path` with `query` from the first of `bases` that answers with success.
 async fn get_json(http: &reqwest::Client, bases: &[String], path: &str, query: &[(&str, String)]) -> Result<Value> {
@@ -49,11 +52,42 @@ pub async fn klines(http: &reqwest::Client, bases: &[String], symbol: &str, q0: 
 }
 
 /// Binance's time and when it was asked and answered by this machine's clock: `(server, sent,
-/// received)`, unix ms. The offset of this clock is the server time minus the middle.
+/// received)`, unix ms. The offset of this clock is the server time minus the middle. The first
+/// address that answers is timed: its first answer opens the connection (a handshake far away, a
+/// refusal of another address before it, do not fall inside the time), then the soonest of
+/// `TIME_SAMPLES` answers over that connection is kept.
 pub async fn server_time_ms(http: &reqwest::Client, bases: &[String]) -> Result<(i64, i64, i64)> {
+    let mut why = Vec::new();
+    for base in bases {
+        if let Err(e) = time_once(http, base).await {
+            why.push(format!("{e:#}"));
+            continue;
+        }
+        let mut best: Option<(i64, i64, i64)> = None;
+        for _ in 0..TIME_SAMPLES {
+            match time_once(http, base).await {
+                Ok(t) if best.is_none_or(|b| t.2 - t.1 < b.2 - b.1) => best = Some(t),
+                Ok(_) => {}
+                Err(e) => why.push(format!("{e:#}")),
+            }
+        }
+        if let Some(t) = best {
+            return Ok(t);
+        }
+    }
+    Err(anyhow!("{}", why.join("; ")))
+}
+
+/// One `/api/v3/time` of `base`: `(server, sent, received)`.
+async fn time_once(http: &reqwest::Client, base: &str) -> Result<(i64, i64, i64)> {
+    let url = format!("{base}/api/v3/time");
     let sent = local_ms();
-    let v = get_json(http, bases, "/api/v3/time", &[]).await?;
+    let r = http.get(&url).send().await.with_context(|| url.clone())?;
+    if !r.status().is_success() {
+        bail!("{url}: HTTP {}", r.status().as_u16());
+    }
+    let v: Value = r.json().await.with_context(|| format!("{url}: not JSON"))?;
     let received = local_ms();
-    let server = v["serverTime"].as_i64().ok_or_else(|| anyhow!("/api/v3/time: no serverTime"))?;
+    let server = v["serverTime"].as_i64().ok_or_else(|| anyhow!("{url}: no serverTime"))?;
     Ok((server, sent, received))
 }
