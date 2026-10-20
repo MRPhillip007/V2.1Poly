@@ -49,6 +49,30 @@ pub fn window_plan(now_ms: i64, last_s: Option<i64>, open_s: i64, close_s: i64) 
     }
 }
 
+/// The hot loop's next tick, kept from one wake of the loop to the next: a frame that wakes it does not
+/// put the tick off.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Ticker {
+    due_ms: Option<i64>,
+}
+
+impl Ticker {
+    /// How long to wait at `now_ms` for the tick of the window `s`: 0 when it is due. A tick further
+    /// off than a tick can be is counted again: the clock was set back.
+    pub fn wait_ms(&mut self, now_ms: i64, s: Option<i64>) -> u64 {
+        let due = match self.due_ms {
+            Some(due) if due - now_ms <= IDLE_TICK_MS => due,
+            _ => *self.due_ms.insert(next_tick_ms(now_ms, s)),
+        };
+        u64::try_from(due - now_ms).unwrap_or(0)
+    }
+
+    /// The tick was taken: the next one is counted from the next wait.
+    pub fn ticked(&mut self) {
+        self.due_ms = None;
+    }
+}
+
 /// The hot thread's next tick after `now_ms` for the window `s`: every 50 ms in 835–872 s of it, on
 /// the multiples of 50 ms (840.000 among them); else every 100 ms, but 835.000 itself.
 pub fn next_tick_ms(now_ms: i64, s: Option<i64>) -> i64 {

@@ -29,7 +29,7 @@ use crate::hot::binance::{BinanceEvent, BinanceStream, GapTracker, Trade};
 use crate::hot::copies::FrameDedupe;
 use crate::hot::engine::FastEngine;
 use crate::hot::items::{read_frame, FeedItem};
-use crate::hot::timer::next_tick_ms;
+use crate::hot::timer::Ticker;
 use crate::hot::wire::Frame;
 use crate::hot::ws::{CopyEvent, PmCopy};
 use crate::shared::clock::ExchangeClock;
@@ -49,7 +49,6 @@ const MAX_COPIES: usize = 2;
 
 pub struct HotState {
     engine: FastEngine,
-    copies: u8,
     dedupe: FrameDedupe,
     frame: Frame,
     items: Vec<FeedItem>,
@@ -80,7 +79,6 @@ impl HotState {
         let gaps = GapTracker::new(&p.watch_coins);
         HotState {
             engine: FastEngine::new(p, feed_silent_ms),
-            copies,
             dedupe: FrameDedupe::new(DEDUPE_SLOTS, copies, DEDUPE_TTL_MS),
             frame: Frame::default(),
             items: Vec::with_capacity(ROOM),
@@ -282,9 +280,10 @@ async fn hot_loop(cfg: Config, p: Params, to_cold: Producer<HotMsg>, mut from_co
     let mut binance = BinanceStream::new([cfg.feeds.binance_ws.clone(), cfg.feeds.binance_ws_fallback.clone()], &coins);
     let mut copies: [Option<PmCopy>; MAX_COPIES] = [None, None];
     let mut sub: Option<Subscription> = None;
+    let mut ticker = Ticker::default();
     while !stop.load(Ordering::Relaxed) {
         let now = clock.now_ms();
-        let wait = Duration::from_millis(u64::try_from(next_tick_ms(now, st.window()) - now).unwrap_or(0));
+        let wait = Duration::from_millis(ticker.wait_ms(now, st.window()));
         let woke = {
             let [c0, c1] = &mut copies;
             tokio::select! {
@@ -300,6 +299,7 @@ async fn hot_loop(cfg: Config, p: Params, to_cold: Producer<HotMsg>, mut from_co
             Woke::Binance(BinanceEvent::Up { fallback }) => st.on_binance(true, fallback, clock.now_ms()),
             Woke::Binance(BinanceEvent::Down { .. }) => st.on_binance(false, false, clock.now_ms()),
             Woke::Tick => {
+                ticker.ticked();
                 let now = clock.now_ms();
                 while let Ok(msg) = from_cold.pop() {
                     if let ColdMsg::Arm(arm) = &msg {
