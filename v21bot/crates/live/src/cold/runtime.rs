@@ -92,6 +92,11 @@ struct Win {
     fast: Vec<FastSeen>,
     waits: Vec<(Coin, f64, i64)>,
     n_trades: u32,
+    /// When the window was handed to the hot thread: its copies connect from then (or from the plan's
+    /// moment, if later).
+    armed_at_ms: i64,
+    /// A copy of the feed has come up in this window.
+    copy_up: bool,
     /// Both copies of the feed are down since then.
     copies_lost_at: Option<i64>,
     copies_alarmed: bool,
@@ -131,6 +136,9 @@ struct Cold {
     outcomes_at: BTreeMap<i64, i64>,
     exact_at_ms: i64,
     binance_fallback: bool,
+    /// When the last item of the market channel and the last Binance trade came (exchange clock).
+    last_feed_ms: Option<i64>,
+    last_trade_ms: Option<i64>,
     cpu: CpuMeter,
 }
 
@@ -197,6 +205,8 @@ impl Cold {
             outcomes_at: BTreeMap::new(),
             exact_at_ms: 0,
             binance_fallback: false,
+            last_feed_ms: None,
+            last_trade_ms: None,
             cpu: CpuMeter::default(),
         })
     }
@@ -262,13 +272,48 @@ impl Cold {
             let fast = self.win.as_ref().is_some_and(|w| (w.plan.s * 1000 + 835_000..=w.plan.s * 1000 + 900_000).contains(&now));
             self.exact_at_ms = now + if fast { EXACT_FAST_MS } else { EXACT_SLOW_MS };
         }
-        if let Some(w) = &mut self.win
-            && let Some(at) = w.copies_lost_at
-            && !w.copies_alarmed
-            && now - at > COPIES_ALARM_MS
-        {
-            w.copies_alarmed = true;
-            self.alarm("обе копии ленты Polymarket недоступны дольше 10 с");
+        self.feed_alarms(now);
+    }
+
+    /// The alarms of the feeds by the clock, while the window's copies are meant to be open (a loss
+    /// that the planned close ends is none): both copies down, or none come up, for 10 s; and silence
+    /// in the decision minute, which starts no check and so no pause of the fast engine.
+    fn feed_alarms(&mut self, now: i64) {
+        let silent_ms = self.cfg.risk.feed_silent_ms;
+        let (feed, trade) = (self.last_feed_ms, self.last_trade_ms);
+        let Some(w) = &mut self.win else { return };
+        let mut copies = None;
+        if now < w.plan.close_at_ms && !w.copies_alarmed {
+            let since = w.plan.connect_at_ms.max(w.armed_at_ms);
+            if w.copies_lost_at.is_some_and(|at| now - at > COPIES_ALARM_MS) {
+                copies = Some("обе копии ленты Polymarket недоступны дольше 10 с");
+            } else if !w.copy_up && now - since > COPIES_ALARM_MS {
+                copies = Some("копии ленты Polymarket не подключились за 10 с");
+            }
+            w.copies_alarmed = copies.is_some();
+        }
+        let (s0, armed) = (w.plan.s * 1000, w.armed_at_ms);
+        if let Some(text) = copies {
+            self.alarm(text);
+        }
+        // silent since the last item, or since the window was armed (a start, a restart)
+        let silent = |last: Option<i64>| now - last.map_or(armed, |t| t.max(armed)) > silent_ms;
+        if (s0 + 835_000..=s0 + 870_000).contains(&now) {
+            if silent(feed) {
+                self.pause_alarm(PM_SILENT);
+            }
+            if silent(trade) {
+                self.pause_alarm(BN_SILENT);
+            }
+        }
+    }
+
+    /// A pause of the feed in the decision minute: one alarm a window.
+    fn pause_alarm(&mut self, p: &'static str) {
+        let Some(w) = &mut self.win else { return };
+        if !w.paused.contains(&p) {
+            w.paused.push(p);
+            self.alarm(&format!("{p} в решающую минуту"));
         }
     }
 
@@ -277,8 +322,14 @@ impl Cold {
         for _ in 0..DRAIN {
             let Ok(msg) = self.from_hot.pop() else { break };
             match msg {
-                HotMsg::Feed { rx_ms, item } => self.exact.on_item(rx_ms, item),
-                HotMsg::Trade(t) => self.exact.on_trade(&t),
+                HotMsg::Feed { rx_ms, item } => {
+                    self.last_feed_ms = Some(rx_ms);
+                    self.exact.on_item(rx_ms, item);
+                }
+                HotMsg::Trade(t) => {
+                    self.last_trade_ms = Some(now);
+                    self.exact.on_trade(&t);
+                }
                 HotMsg::Gap { coin, q0, q1, fill } => {
                     self.exact.on_gap(coin, q0, q1);
                     if fill {
@@ -286,7 +337,11 @@ impl Cold {
                     }
                 }
                 HotMsg::Fast(out) => self.on_fast(out, now),
-                HotMsg::Copy { .. } => {}
+                HotMsg::Copy { up, .. } => {
+                    if up && let Some(w) = &mut self.win {
+                        w.copy_up = true;
+                    }
+                }
                 HotMsg::Coverage { lost, at_ms } => {
                     if lost {
                         self.exact.on_coverage_lost(at_ms);
@@ -328,14 +383,13 @@ impl Cold {
                 w.fast.push(FastSeen { out, wait_ms });
                 let silent = match out {
                     FastOut::Skip(k) => match k.reason {
-                        FastReason::Paused(p) if (p == PM_SILENT || p == BN_SILENT) && !w.paused.contains(&p) => Some(p),
+                        FastReason::Paused(p) if p == PM_SILENT || p == BN_SILENT => Some(p),
                         _ => None,
                     },
                     _ => None,
                 };
                 if let Some(p) = silent {
-                    w.paused.push(p);
-                    self.alarm(&format!("{p} в решающую минуту"));
+                    self.pause_alarm(p);
                 }
                 if let FastOut::Shot(shot) = out {
                     self.exact.on_shot(&shot);
@@ -595,7 +649,20 @@ impl Cold {
         self.exact.arm(&arm);
         let _ = self.to_hot.push(ColdMsg::Arm(arm.clone()));
         self.last_s = Some(s);
-        self.win = Some(Win { plan, arm, notes, fast: vec![], waits: vec![], n_trades: 0, copies_lost_at: None, copies_alarmed: false, paused: vec![], done: false });
+        self.win = Some(Win {
+            plan,
+            arm,
+            notes,
+            fast: vec![],
+            waits: vec![],
+            n_trades: 0,
+            armed_at_ms: now,
+            copy_up: false,
+            copies_lost_at: None,
+            copies_alarmed: false,
+            paused: vec![],
+            done: false,
+        });
     }
 
     fn on_outcomes(&mut self, s: i64, list: &[(Coin, Outcome)]) {

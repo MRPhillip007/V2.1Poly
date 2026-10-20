@@ -228,3 +228,39 @@ async fn the_exact_decision_waits_for_the_seconds_a_drop_of_binance_lost() {
     bot.stop().unwrap();
     stand.assert_no_errors();
 }
+
+/// The texts of the alarms of the journal.
+fn alarms(recs: &[Value]) -> Vec<String> {
+    of(recs, "alarm").iter().filter_map(|a| a["text"].as_str().map(str::to_string)).collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "end to end: about 20 s"]
+async fn copies_that_never_connect_and_a_silent_feed_raise_alarms() {
+    // the market channel refuses every connection: no copy comes up, and nothing comes in the minute
+    let cut = Cut { at_ms: 0, until_ms: 900_000, all: true, code: 1000 };
+    let stand = Stand::start(Setup { cuts: vec![cut], ..Setup::default() }).await;
+    let bot = stand.bot();
+    stand
+        .wait_for("both alarms", |r| {
+            let texts = alarms(r);
+            texts.iter().any(|t| t.contains("не подключились")) && texts.iter().any(|t| t.contains("лента Polymarket молчит"))
+        })
+        .await;
+    bot.stop().unwrap();
+    stand.assert_no_errors();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "end to end: about 70 s"]
+async fn a_loss_the_planned_close_ends_raises_no_alarm() {
+    // both copies drop at 875 s; the bot closes its copies at 880 s anyway, as in every window
+    let cut = Cut { at_ms: 875_000, until_ms: 900_000, all: true, code: 1001 };
+    let stand = Stand::start(Setup { cuts: vec![cut], ..Setup::default() }).await;
+    let bot = stand.bot();
+    stand.until(895_000).await;
+    let texts = alarms(&stand.journal());
+    assert!(!texts.iter().any(|t| t.contains("дольше 10 с")), "{texts:?}");
+    bot.stop().unwrap();
+    stand.assert_no_errors();
+}
