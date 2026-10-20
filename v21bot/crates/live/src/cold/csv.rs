@@ -118,6 +118,16 @@ pub fn rebuild_tables(journal: &Journal, dir: &Path) -> Result<bool> {
     Ok(ok)
 }
 
+/// Writes a table of plain cells at `path`, as the journal's tables are written.
+pub fn write_csv(path: &Path, columns: &[&str], rows: &[Vec<String>]) -> std::io::Result<()> {
+    let mut out = String::from("\u{feff}");
+    for cells in std::iter::once(columns.iter().map(|c| (*c).to_string()).collect::<Vec<_>>()).chain(rows.iter().cloned()) {
+        out.push_str(&cells.iter().map(|c| quote(c)).collect::<Vec<_>>().join(","));
+        out.push_str("\r\n");
+    }
+    write_atomically(path, out.as_bytes(), false)
+}
+
 fn table(columns: &[&str], rows: &[Row]) -> String {
     let mut out = String::from("\u{feff}");
     let mut line = |cells: &mut dyn Iterator<Item = String>| {

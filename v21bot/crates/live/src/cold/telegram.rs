@@ -23,7 +23,7 @@ const PAUSES: [Duration; 2] = [Duration::from_secs(2), Duration::from_secs(4)];
 const LOG_KEEP: usize = 100;
 
 /// `$1,234.50`; with `sign`, `+$1.20` or `−$1.20`.
-fn money(x: f64, sign: bool) -> String {
+pub fn money(x: f64, sign: bool) -> String {
     let text = format!("{:.2}", x.abs());
     let (whole, cents) = text.split_once('.').unwrap_or((&text, "00"));
     let mut grouped = String::new();
@@ -42,11 +42,12 @@ fn money(x: f64, sign: bool) -> String {
 }
 
 /// `$20`, or `$20.50` when there are cents.
-fn dollars(x: f64) -> String {
+pub fn dollars(x: f64) -> String {
     if x.fract() == 0.0 { format!("${x:.0}") } else { money(x, false) }
 }
 
-fn name(coin: Coin, side: Side) -> String {
+/// `BTC Down`.
+pub fn name(coin: Coin, side: Side) -> String {
     let side = match side {
         Side::Up => "Up",
         Side::Down => "Down",

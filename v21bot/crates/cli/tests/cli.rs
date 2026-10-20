@@ -128,3 +128,56 @@ fn a_bad_period_is_refused() {
     let out = v21(&["replay", "--root", ".", "--period", "july"]);
     assert_eq!(out.status.code(), Some(2));
 }
+
+/// A journal with one window's signal, and a config whose strategy folder is `root`.
+fn journal_and_config(root: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
+    let journal = root.join("journal.jsonl");
+    let s = 1_790_910_900;
+    std::fs::write(
+        &journal,
+        format!(
+            "{{\"kind\":\"signal\",\"ts_utc\":\"2026-10-02T03:31:00.000+00:00\",\"s\":{s},\"coin\":\"btc\",\"side\":\"Up\",\"t_trig_s\":840.0,\"px\":0.8,\"counted\":true,\"decision\":\"вход\",\"reason\":\"вход\",\"demo\":{{\"shares\":25.0,\"notional_usd\":20.0,\"unfilled_usd\":0.0,\"avg_price\":0.8}},\"price_no_latency\":0.8}}\n"
+        ),
+    )
+    .unwrap();
+    let config = root.join("v21bot.toml");
+    std::fs::write(&config, format!("strategy_dir = \"{}\"\n", root.to_string_lossy().replace('\\', "/"))).unwrap();
+    (journal, config)
+}
+
+#[test]
+fn report_prints_the_report_of_a_journal() {
+    let root = bare_root();
+    let (journal, config) = journal_and_config(root.path());
+    let out = v21(&["report", "--journal", journal.to_str().unwrap(), "--config", config.to_str().unwrap(), "--from", "2026-10-02", "--to", "2026-10-02"]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{text}{}", String::from_utf8_lossy(&out.stderr));
+    assert!(text.starts_with("Отчёт v21bot · демо · 02.10.2026 (UTC)\nСигналов базового правила: 1"), "{text}");
+    // a day without windows
+    let out = v21(&["report", "--journal", journal.to_str().unwrap(), "--config", config.to_str().unwrap(), "--from", "2026-10-03"]);
+    assert!(String::from_utf8_lossy(&out.stdout).contains("нет записей"));
+}
+
+#[test]
+fn report_refuses_a_date_that_is_no_date() {
+    let root = bare_root();
+    let (journal, config) = journal_and_config(root.path());
+    let out = v21(&["report", "--journal", journal.to_str().unwrap(), "--config", config.to_str().unwrap(), "--from", "2026-13-01"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("2026-13-01"));
+}
+
+#[test]
+fn reconcile_without_a_data_folder_exits_2() {
+    let root = bare_root();
+    let (journal, _) = journal_and_config(root.path());
+    let out = v21(&["reconcile", "--journal", journal.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("V21_ROOT"));
+}
+
+#[test]
+fn check_with_a_config_it_cannot_read_exits_2() {
+    let out = v21(&["check", "--config", "/no/such/v21bot.toml"]);
+    assert_eq!(out.status.code(), Some(2));
+}

@@ -211,6 +211,14 @@ impl Cold {
 
     /// The first measurement of the clock and the warm-up of the closes, before any window.
     async fn start(&mut self) {
+        let start = json!({
+            "mode": "demo",
+            "stake_usd": self.cfg.stake_usd,
+            "demo_bank_usd": self.cfg.demo_bank_usd,
+            "taker_delay_ms": self.cfg.exec.taker_delay_ms,
+            "version": env!("CARGO_PKG_VERSION"),
+        });
+        self.append("start", start);
         let offset = measure_clock(self.http.clone(), self.cfg.risk.ntp_server.clone(), self.rest_bases()).await;
         self.on_clock(offset);
         let now_s = self.now().div_euclid(1000);
