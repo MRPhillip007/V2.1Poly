@@ -44,8 +44,10 @@ pub struct FrameDedupe {
 
 impl FrameDedupe {
     /// A table of `capacity` slots (rounded up to a power of two) for `copies` copies (at most 4).
-    /// An entry older than `ttl_ms` is a free slot again. The bot uses 32 768 slots, 2 copies and
-    /// 3 000 ms: at the busiest second of the recording (2 737 frames) the table is a quarter full.
+    /// An entry older than `ttl_ms` is a free slot again. The bot uses 262 144 slots, 2 copies and
+    /// 30 000 ms: the copies drift apart by seconds (the recording of 2026-10-20: 4.6% of the frames
+    /// over 3 s behind the other copy, none over 30 s), and 30 s of the busiest second seen (2 458
+    /// frames) fill under a third of the table.
     pub fn new(capacity: usize, copies: u8, ttl_ms: i64) -> FrameDedupe {
         let n = capacity.max(1).next_power_of_two();
         assert!((1..=MAX_COPIES).contains(&usize::from(copies)), "1 to {MAX_COPIES} copies, got {copies}");
@@ -58,6 +60,13 @@ impl FrameDedupe {
             dropped: 0,
             overflows: 0,
         }
+    }
+
+    /// Forgets every frame and the counts, where the table is: nothing is allocated.
+    pub fn clear(&mut self) {
+        self.slots.fill(FREE);
+        self.dropped = 0;
+        self.overflows = 0;
     }
 
     /// The frame `raw` came from `copy` at `now_ms`: true if it is to be applied, false if another

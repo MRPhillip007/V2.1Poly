@@ -31,6 +31,17 @@ fn identical_frames_repeated_inside_a_copy_are_kept() {
 }
 
 #[test]
+fn a_cleared_table_knows_no_frame() {
+    // a new window empties the table where it is: nothing is allocated
+    let mut d = FrameDedupe::new(64, 2, 30_000);
+    assert!(d.admit(0, b"A", 1_000));
+    assert!(!d.admit(1, b"A", 1_010));
+    d.clear();
+    assert_eq!(d.dropped(), 0);
+    assert!(d.admit(1, b"A", 1_020));
+}
+
+#[test]
 fn a_frame_only_one_copy_had_is_kept() {
     let mut d = FrameDedupe::new(64, 2, 3_000);
     assert!(d.admit(0, b"A", 1_000));

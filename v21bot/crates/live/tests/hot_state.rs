@@ -82,6 +82,19 @@ fn a_frame_both_copies_bring_is_applied_once() {
 }
 
 #[test]
+fn a_copy_seconds_behind_the_other_is_still_applied_once() {
+    // the copies drift apart by seconds (the recording of 20.10: 4.6% of the frames came over 3 s
+    // after the other copy's, the slowest within 30 s): the frame must still be known
+    let (mut h, mut q) = hot(1024);
+    let raw = book(0, 829_900, "0.18", "0.8");
+    h.on_frame(0, &raw, S0 + 830_000, Instant::now());
+    h.on_frame(1, &raw, S0 + 838_000, Instant::now());
+    let feed = drain(&mut q).into_iter().filter(|m| matches!(m, HotMsg::Feed { .. })).count();
+    // a snapshot, its two levels and its row: once
+    assert_eq!(feed, 4);
+}
+
+#[test]
 fn a_shot_on_a_frame_carries_the_time_from_the_frame() {
     let (mut h, mut q) = hot(1024);
     h.on_frame(0, &book(0, 839_000, "0.04", "0.95"), S0 + 839_050, Instant::now());

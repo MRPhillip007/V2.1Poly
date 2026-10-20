@@ -36,10 +36,10 @@ use crate::shared::clock::ExchangeClock;
 use crate::shared::config::Config;
 use crate::shared::msgs::{ColdMsg, FastOut, HotMsg, WindowArm};
 
-/// The dedupe of the copies: 32 768 slots for 3 s of frames (the busiest second of the recording
-/// fills a quarter of it).
-const DEDUPE_SLOTS: usize = 32_768;
-const DEDUPE_TTL_MS: i64 = 3_000;
+/// The dedupe of the copies: a frame is known for 30 s, as the copies drift apart by seconds; 262 144
+/// slots hold 30 s of the busiest second seen at under a third full (see `FrameDedupe::new`).
+const DEDUPE_SLOTS: usize = 262_144;
+const DEDUPE_TTL_MS: i64 = 30_000;
 /// A health record a minute.
 const HEALTH_EVERY_MS: i64 = 60_000;
 /// Room for the items of one frame and the decisions of one step before the first growth.
@@ -104,7 +104,7 @@ impl HotState {
 
     fn arm(&mut self, arm: &WindowArm) {
         self.tokens = arm.tokens.iter().map(|t| Box::from(t.as_str())).collect();
-        self.dedupe = FrameDedupe::new(DEDUPE_SLOTS, self.copies, DEDUPE_TTL_MS);
+        self.dedupe.clear();
         self.engine.arm(arm);
         self.window = Some(arm.s);
         self.copies_closed();
