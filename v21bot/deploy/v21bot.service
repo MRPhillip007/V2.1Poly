@@ -1,0 +1,22 @@
+[Unit]
+Description=v21bot — бот стратегии v2.1 (Polymarket, рынки Up/Down 15 минут)
+After=network-online.target chrony.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/v21bot/v21 run --config /etc/v21bot/v21bot.toml --secrets /etc/v21bot/secrets.toml
+# журнал, state.json и таблицы — в /var/lib/v21bot (systemd создаёт папку сам)
+StateDirectory=v21bot
+WorkingDirectory=/var/lib/v21bot
+Restart=always
+RestartSec=5
+# SIGTERM получает только сам бот: он сохраняет state.json и журнал и выходит
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+LimitNOFILE=65536
+Environment=RUST_BACKTRACE=1
+
+[Install]
+WantedBy=multi-user.target
