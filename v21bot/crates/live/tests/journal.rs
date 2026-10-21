@@ -18,7 +18,7 @@ fn signal_rec(coin: &str, t_trig: f64, px: f64) -> Value {
            "rank": 1, "z": 1.7, "hour_ok": true, "decision": "вход", "reason": "вход",
            "fast_decision": "вход", "fast_reason": "вход", "fast_rank": 1, "fast_z": 1.69, "lag_ms": 40,
            "demo": {"shares": 24.5, "notional_usd": 20.0, "fee_usd": 0.27, "avg_price": 0.8163, "levels_used": 2, "unfilled_usd": 0.0},
-           "price_no_latency": 0.81})
+           "price_no_latency": 0.81, "depth_usd_trig": 122.5, "depth_usd_match": 42.5})
 }
 
 fn entry_rec(coin: &str, t_trig: f64) -> Value {
@@ -230,7 +230,7 @@ fn a_settlement_in_the_journal_is_applied_on_load() {
 // ---------------------------------------------------------------- the tables
 
 const TRADES: &str = "trade_id,window_start_utc,coin,side,t_trig_s,rank,z,stake_usd,cost_usd,fee_usd,shares,avg_price,levels_used,unfilled_usd,px_backtest,price_no_latency,status,outcome,payout_usd,pnl_usd,roi,balance_after,settled_utc";
-const SIGNALS: &str = "window_start_utc,coin,t_trig_s,side,ask_at_trig,px,counted,rank,z,hour_ok,decision,reason,fast_decision,fast_reason,fast_rank,fast_z,lag_ms,demo_filled_usd,demo_shares,demo_avg_price,price_no_latency";
+const SIGNALS: &str = "window_start_utc,coin,t_trig_s,side,ask_at_trig,px,counted,rank,z,hour_ok,decision,reason,fast_decision,fast_reason,fast_rank,fast_z,lag_ms,demo_filled_usd,demo_shares,demo_avg_price,price_no_latency,depth_usd_trig,depth_usd_match";
 const WINDOWS: &str = "window_start_utc,markets_ok,rules_ok,ws_ok_840_870,binance_ok,n_signals,n_trades,outcome_btc,outcome_eth,outcome_sol,official_ptb_btc,official_ptb_eth,official_ptb_sol,p0_binance_btc,p0_binance_eth,p0_binance_sol,feed_lag_max_ms,late_dropped,book_reloads,coverage_lost_ms,binance_fallback,note";
 
 #[test]
@@ -261,6 +261,7 @@ fn tables_have_these_columns_and_a_bom() {
         ["2026-10-02 03:15:00", "840.0", "True", "1", "вход"]
     );
     assert_eq!([cell(&h, r, "demo_filled_usd"), cell(&h, r, "demo_shares"), cell(&h, r, "demo_avg_price"), cell(&h, r, "lag_ms")], ["20.0", "24.5", "0.8163", "40"]);
+    assert_eq!([cell(&h, r, "depth_usd_trig"), cell(&h, r, "depth_usd_match")], ["122.5", "42.5"]);
     // floats as Python writes them, null as nothing
     assert_eq!([cell(&h, &rows[1], "z"), cell(&h, &rows[1], "rank")], ["1.5e-05", ""]);
     let (h, rows) = read_table(&dir.path().join("windows.csv"));

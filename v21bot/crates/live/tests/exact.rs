@@ -129,6 +129,21 @@ fn demo_fill_uses_the_book_at_the_match_moment() {
 }
 
 #[test]
+fn the_demo_counts_the_dollars_offered_up_to_the_limit() {
+    let mut e = engine();
+    // the BTC Up book at the band hit: 100 at 0.80 and 50 at 0.85 up to the limit 0.88 ($122.50),
+    // 1 000 at 0.90 past it
+    snapshot(&mut e, 0, 839_000, &[(800, 100.0), (850, 50.0), (900, 1000.0)], 0.18, 0.80);
+    // by the match (840.250 s) a trade has taken the 0.80 level: $42.50
+    at(&mut e, 840_100, ask_change(0, 840_100, 800, 0.0, 0.18, 0.85));
+    at(&mut e, 840_100, bbo(0, 840_100, 0.18, 0.85));
+    let out = run(&mut e, 850_000);
+    let demo = signals(&out)[0].demo.clone().unwrap();
+    assert!((demo.depth_no_latency_usd - 122.5).abs() < 1e-9, "{demo:?}");
+    assert!((demo.depth_at_match_usd - 42.5).abs() < 1e-9, "{demo:?}");
+}
+
+#[test]
 fn the_delay_grid_has_13_fills_from_the_send() {
     let mut e = engine();
     snapshot(&mut e, 0, 839_000, &[(800, 100.0)], 0.18, 0.80);

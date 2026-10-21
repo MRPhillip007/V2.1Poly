@@ -81,6 +81,10 @@ pub struct DemoFill {
     pub no_latency: Fill,
     /// The book at the send + `GRID_MS[k]`; `None` for the fill a shot waits for.
     pub by_delay: Option<[Fill; 13]>,
+    /// The dollars on the asks of the bought token up to the limit, price × size: right after the band
+    /// hit, and at the match.
+    pub depth_no_latency_usd: f64,
+    pub depth_at_match_usd: f64,
 }
 
 /// A check of the exact engine and the decisions of v2 and v2.1 on it.
@@ -206,6 +210,8 @@ struct Demo {
     limit: f64,
     match_ms: i64,
     fills: Vec<Option<Fill>>,
+    /// The dollars up to the limit at the no-latency and the match slots.
+    depth_usd: [f64; 2],
     /// Slots not taken yet.
     left: usize,
     /// The demo of a shot: a `ShotFill` goes out once it is complete.
@@ -220,6 +226,8 @@ impl Demo {
             at_match: f(AT_MATCH),
             no_latency: f(NO_LATENCY),
             by_delay: (self.fills.len() > GRID).then(|| std::array::from_fn(|k| f(GRID + k))),
+            depth_no_latency_usd: self.depth_usd[NO_LATENCY],
+            depth_at_match_usd: self.depth_usd[AT_MATCH],
         }
     }
 }
@@ -630,11 +638,12 @@ impl Window {
         Some(self.shots.swap_remove(k))
     }
 
-    fn new_demo(&mut self, spec: DemoSpec, no_latency: Option<Fill>, grid: bool, shot: Option<ShotRecord>, timing: &DemoTiming) -> usize {
+    fn new_demo(&mut self, spec: DemoSpec, no_latency: Option<(Fill, f64)>, grid: bool, shot: Option<ShotRecord>, timing: &DemoTiming) -> usize {
         let match_ms = spec.send_ms + (timing.half_rtt_ms + timing.taker_delay_ms).round() as i64;
         let n = if grid { GRID + GRID_MS.len() } else { GRID };
         let mut fills = vec![None; n];
-        fills[NO_LATENCY] = no_latency;
+        fills[NO_LATENCY] = no_latency.map(|(fill, _)| fill);
+        let depth_usd = [no_latency.map_or(0.0, |(_, depth)| depth), 0.0];
         let id = self.demos.len();
         self.demos.push(Demo {
             token: spec.token,
@@ -644,6 +653,7 @@ impl Window {
             limit: timing.limit,
             match_ms,
             fills,
+            depth_usd,
             left: n - usize::from(no_latency.is_some()),
             shot,
         });
@@ -675,6 +685,9 @@ impl Window {
             let Some(t) = self.tokens.get(usize::from(d.token)).and_then(Option::as_ref) else { continue };
             t.book.asks_upto(d.limit, &mut self.asks);
             d.fills[slot] = Some(fak_buy(&self.asks, d.stake, d.limit, &d.fee));
+            if let Some(depth) = d.depth_usd.get_mut(slot) {
+                *depth = self.asks.iter().map(|&(price, size)| price * size).sum();
+            }
             d.left -= 1;
             if d.left == 0
                 && let Some(shot) = d.shot
@@ -722,7 +735,7 @@ impl Window {
     fn resend(&mut self, old: usize, shot: &ShotRecord, timing: &DemoTiming) -> usize {
         let d = &self.demos[old];
         let spec = DemoSpec { token: d.token, fee: d.fee, send_ms: shot.send_ms, band_ms: d.band_ms };
-        let no_latency = d.fills[NO_LATENCY];
+        let no_latency = d.fills[NO_LATENCY].map(|fill| (fill, d.depth_usd[NO_LATENCY]));
         self.new_demo(spec, no_latency, true, None, timing)
     }
 

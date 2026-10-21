@@ -96,6 +96,8 @@ pub fn signal_record(sig: &ExactSignal, fast: Option<&FastSeen>, strategy: &Stra
         "demo": demo.map(|d| serde_json::to_value(d.at_match).unwrap_or(Value::Null)),
         "demo_grid": grid,
         "price_no_latency": demo.map(|d| d.no_latency.avg_price),
+        "depth_usd_trig": demo.map(|d| d.depth_no_latency_usd),
+        "depth_usd_match": demo.map(|d| d.depth_at_match_usd),
     })
 }
 

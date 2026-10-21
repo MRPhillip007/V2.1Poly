@@ -41,6 +41,8 @@ async fn shot_at_840_and_a_mid_minute_signal() {
         let s = signal(&recs, coin, t);
         assert_eq!((&s["decision"], &s["fast_decision"], &s["shot"]), (&Value::from("вход"), &Value::from("вход"), &Value::from(true)), "{s}");
         assert!(s["demo"]["shares"].as_f64().unwrap() > 24.0, "{s}");
+        // the book holds 100 at 0.80 up to the limit: $80 at the band hit and at the match
+        assert_eq!((&s["depth_usd_trig"], &s["depth_usd_match"]), (&Value::from(80.0), &Value::from(80.0)), "{s}");
     }
     assert_eq!(of(&recs, "demo").len(), 2);
     assert_eq!(of(&recs, "entry").len(), 2);

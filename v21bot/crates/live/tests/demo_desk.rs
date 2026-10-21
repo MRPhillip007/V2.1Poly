@@ -21,7 +21,7 @@ fn shot_fill(coin: Coin, side: Side, price: f64, size: f64) -> ShotFill {
         Fill { shares: 0.0, notional_usd: 0.0, fee_usd: 0.0, avg_price: f64::NAN, levels_used: 0, unfilled_usd: 20.0 }
     };
     let shot = ShotRecord { s: S, coin, side, t_trig: 840.0, event_ts_ms: S * 1000 + 839_500, send_ms: S * 1000 + 840_000, rank: 1, z: None, frame_to_decision_ns: 0 };
-    ShotFill { shot, demo: DemoFill { match_ms: S * 1000 + 840_256, at_match, no_latency: at_match, by_delay: None } }
+    ShotFill { shot, demo: DemoFill { match_ms: S * 1000 + 840_256, at_match, no_latency: at_match, by_delay: None, depth_no_latency_usd: 100.0, depth_at_match_usd: 100.0 } }
 }
 
 #[test]

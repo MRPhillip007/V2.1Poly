@@ -47,7 +47,7 @@ pub const TRADES_COLUMNS: [&str; 23] = [
     "settled_utc",
 ];
 
-pub const SIGNALS_COLUMNS: [&str; 21] = [
+pub const SIGNALS_COLUMNS: [&str; 23] = [
     "window_start_utc",
     "coin",
     "t_trig_s",
@@ -69,6 +69,9 @@ pub const SIGNALS_COLUMNS: [&str; 21] = [
     "demo_shares",
     "demo_avg_price",
     "price_no_latency",
+    // the dollars on the asks up to the limit when the band was hit and at the match
+    "depth_usd_trig",
+    "depth_usd_match",
 ];
 
 pub const WINDOWS_COLUMNS: [&str; 22] = [

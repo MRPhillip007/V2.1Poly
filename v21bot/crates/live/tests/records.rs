@@ -32,7 +32,14 @@ fn fill(shares: f64, price: f64) -> Fill {
 }
 
 fn demo(price: f64) -> DemoFill {
-    DemoFill { match_ms: S0 + 840_250, at_match: fill(20.0 / price, price), no_latency: fill(25.0, 0.80), by_delay: Some(std::array::from_fn(|k| fill(20.0, 0.80 + k as f64 * 0.001))) }
+    DemoFill {
+        match_ms: S0 + 840_250,
+        at_match: fill(20.0 / price, price),
+        no_latency: fill(25.0, 0.80),
+        by_delay: Some(std::array::from_fn(|k| fill(20.0, 0.80 + k as f64 * 0.001))),
+        depth_no_latency_usd: 122.5,
+        depth_at_match_usd: 42.5,
+    }
 }
 
 /// The exact signal of a successful BTC check at 840.0 s, decided by v2 and v2.1.
@@ -66,6 +73,8 @@ fn a_signal_record_has_both_decisions_the_fast_one_and_the_demo() {
     assert_eq!([&r["lag_ms"], &r["send_ms"], &r["shot"]], [&json!(40), &json!(S0 + 840_000), &json!(true)]);
     assert_eq!(r["demo"]["avg_price"], json!(0.81));
     assert_eq!(r["price_no_latency"], json!(0.8));
+    // the dollars on the asks up to the limit when the band was hit and at the match
+    assert_eq!([&r["depth_usd_trig"], &r["depth_usd_match"]], [&json!(122.5), &json!(42.5)]);
     let grid = r["demo_grid"].as_array().unwrap();
     assert_eq!(grid.len(), 13);
     let price = 0.80 + 12.0 * 0.001;
