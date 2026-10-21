@@ -36,7 +36,9 @@ fn example_config_loads_with_the_spec_defaults() {
     assert_eq!((f.binance_rest.as_str(), f.binance_rest_fallback.as_str()), ("https://api.binance.com", "https://data-api.binance.vision"));
     assert_eq!((cfg.exec.warm_interval_s, cfg.exec.response_timeout_ms, cfg.exec.balance_poll_s, cfg.exec.taker_delay_ms), (5, 2000, 30, 250));
     let r = &cfg.risk;
-    assert_eq!((r.feed_silent_ms, r.clock_max_offset_ms, r.max_restarts_10min, r.redeem_alarm_min), (2000, 50, 3, 60));
+    // 5 s, not the spec's first 2 s: spot Binance has no trade of BTC, ETH and SOL for up to 3 s at a
+    // time (the recording of 2026-10-20, every aggTrade id in order), which paused a live feed
+    assert_eq!((r.feed_silent_ms, r.clock_max_offset_ms, r.max_restarts_10min, r.redeem_alarm_min), (5000, 50, 3, 60));
     assert_eq!((r.ledger_tolerance_usd, r.ntp_server.as_str()), (1.0, "time.google.com:123"));
     assert_eq!((cfg.cores.hot, cfg.cores.cold, cfg.cores.pin), (1, 0, true));
     assert_eq!(cfg.telegram.summary_utc, "07:30");

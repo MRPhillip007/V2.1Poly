@@ -24,7 +24,7 @@ balance_poll_s = 30                  # веха 3
 taker_delay_ms = 250                 # задержка тейкера в демо, пока нет живых ордеров
 
 [risk]
-feed_silent_ms = 2000                # лента молчит дольше в 835–870 с — пауза
+feed_silent_ms = 5000                # лента молчит дольше в 835–870 с — пауза (спот Binance молчит до ~3 с)
 clock_max_offset_ms = 50             # поправка часов больше — пауза (на домашнем ПК ставь 5000)
 ntp_server = "time.google.com:123"   # "" — поправка только по Binance
 ledger_tolerance_usd = 1.0           # веха 3

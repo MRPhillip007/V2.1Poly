@@ -70,7 +70,8 @@ pub struct Exec {
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Risk {
-    /// A feed silent this long in 835–870 s of the window pauses the shots (spec §7.4).
+    /// A feed silent this long in 835–870 s of the window pauses the shots (spec §7.4). Spot Binance
+    /// has no trade of BTC, ETH and SOL for up to 3 s at a time: 2 s paused a live feed.
     pub feed_silent_ms: i64,
     /// A clock offset beyond this pauses the shots (spec §7.4).
     pub clock_max_offset_ms: i64,
@@ -160,7 +161,7 @@ impl Default for Exec {
 impl Default for Risk {
     fn default() -> Self {
         Risk {
-            feed_silent_ms: 2000,
+            feed_silent_ms: 5000,
             clock_max_offset_ms: 50,
             ntp_server: "time.google.com:123".into(),
             ledger_tolerance_usd: 1.0,
